@@ -1,21 +1,13 @@
 {
   "version": "1.0",
   "project_key": "3",
-  "phase": "pr_pending",
-  "active_issue": {
-    "number": 65,
-    "title": "[Feature] Migrate Data from Money Manager App (.mmbak)",
-    "html_url": "https://github.com/oatrice/JarWise-Root/issues/65",
-    "body": "# 🎯 Objective\nMigrate historical transaction data from Money Manager application to JarWise.\n\n## 🔍 Data Source Analysis\n**Requirement:** Use **BOTH** files for cross-reference and validation.\n\n1. **SQLite Database (.mmbak)** - 🥇 **Primary Source**\n   - Use for: Schema, Relations, Timestamps, Main Data.\n   - Reason: High fidelity, contains internal IDs and mapping.\n\n2. **HTML/xls (.xls)** - 🥈 **Validation Source**\n   - Use for: Cross-checking totals, human-readable verification.\n   - Reason: Ensures the data extracted from SQLite matches what the user sees in their exported report.\n\n## 📝 Specifications\n- [ ] **Parser Implementation:** \n  - Module A: Read SQLite DB\n  - Module B: Read XLS/HTML\n- [ ] **Cross-Validation:** Compare Total Income/Expense between both sources before importing.\n- [ ] **Schema Mapping:** Map Money Manager tables to JarWise schema.\n- [ ] **Migration Script:** Import Accounts -> Wallets, Categories -> Jars, Transactions.\n\n## 🔗 References\n- Related to #20 (Data Migration)\n- Feature ID: `MIG-01`",
-    "project_item_id": "PVTI_lAHOATfKEM4BMuLizgklN6I",
-    "project_id": "PVT_kwHOATfKEM4BMuLi",
-    "repository": "oatrice/JarWise-Root"
-  },
-  "active_branch": "feat/65-migrate-money-manager-data",
-  "started_at": "2026-02-04T10:18:47.183403",
+  "phase": "idle",
+  "active_issue": null,
+  "active_branch": null,
+  "started_at": null,
   "checklist": {},
   "context": {},
-  "pr_url": "https://github.com/oatrice/JarWise-Backend/pull/1",
+  "pr_url": null,
   "pr_number": null,
-  "last_updated": "2026-02-04T11:54:36.580207"
+  "last_updated": "2026-02-04T12:17:53.989841"
 }
