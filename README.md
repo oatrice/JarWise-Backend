@@ -59,3 +59,4 @@ Uploads Money Manager backup files for migration.
 - **Robust Parsing**: Handles specific behaviors of Money Manager's SQLite schema and HTML-based XLS exports.
 - **Data Validation**: Automatically detects discrepancies between raw DB data and reported totals.
 - **Domain Mapping**: Transformers to convert external data formats into JarWise's standard Wallet/Transaction models.
+- **Transaction Management**: Core logic for handling transfers between wallets.
