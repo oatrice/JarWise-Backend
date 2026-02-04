@@ -83,8 +83,12 @@ func mapTransactions(mmTrans []models.TransactionDTO) []models.Transaction {
 	for _, t := range mmTrans {
 		date, err := time.Parse(layout, t.Date)
 		if err != nil {
-			// Fallback for YYYY-MM-DD
-			date, _ = time.Parse("2006-01-02", t.Date)
+        var errFallback error
+			date, errFallback = time.Parse("2006-01-02", t.Date)
+			if errFallback != nil {
+				fmt.Printf("WARN: Could not parse date string '%s' for transaction ID %s. Skipping.\n", t.Date, t.ID)
+				continue
+			}
 		}
 
 		txType := "expense"
