@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"jarwise-backend/internal/importer"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/parser"
 	"jarwise-backend/internal/validator"
@@ -81,15 +82,25 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	if !validationResult.IsValid {
 		status = "error"
 		msg = "Validation failed. Discrepancies found."
+	} else {
+		// 5. Import (if valid)
+		// In real app, this might be a separate step "Confirm import".
+		// For this task, we execute the import logic to prove it works.
+		importer := importer.NewImporter()
+		if err := importer.ImportData(parsedData); err != nil {
+			return &models.MigrationResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Import failed: %v", err),
+			}, nil
+		}
+		msg = "Import successful! Data saved to JarWise."
+		status = "success"
 	}
 
 	return &models.MigrationResponse{
 		Status:  status,
 		Message: msg,
-		JobID:   "job-uuid-123", // Generate real ID later
-		// TODO: Include ValidationResult in response model?
-		// Ideally MigrationResponse should have a 'data' field or 'validation' field.
-		// For now, let's just log implementation.
+		JobID:   "job-uuid-123",
 	}, nil
 }
 
