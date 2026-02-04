@@ -33,4 +33,7 @@ type Transaction struct {
 
 	// For transfer
 	ToWalletID string `json:"to_wallet_id,omitempty"`
+
+	// New field for linking (e.g., Transfer, Refund)
+	RelatedTransactionID *string `json:"related_transaction_id,omitempty"`
 }

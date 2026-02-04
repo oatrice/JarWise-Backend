@@ -40,3 +40,4 @@ vendor/
 
 # MacOS
 .DS_Store
+server_bin
