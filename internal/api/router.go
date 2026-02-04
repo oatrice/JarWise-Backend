@@ -37,6 +37,13 @@ func NewRouter() http.Handler {
 
 	mux.HandleFunc("/api/v1/transfers", txHandler.CreateTransfer)
 
+	// Wallets (Mock for Manual Verification)
+	mux.HandleFunc("/api/wallets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[{"id":"1","name":"Cash","balance":100.0},{"id":"2","name":"Bank","balance":5000.0}]`))
+	})
+
 	// Health Check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
