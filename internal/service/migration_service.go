@@ -6,6 +6,7 @@ import (
 	"io"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/parser"
+	"jarwise-backend/internal/validator"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -70,11 +71,25 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	fmt.Printf("Parsed XLS Data: %d Transactions\n", len(xlsData.Transactions))
 	fmt.Printf("DB Total Income: %.2f, XLS Total Income: %.2f\n", parsedData.TotalIncome, xlsData.TotalIncome)
 
-	// Mock response with comparison data
+	// 4. Validate
+	v := validator.NewValidator()
+	validationResult := v.Validate(parsedData, xlsData)
+
+	status := "preview" // Ready for preview if valid
+	msg := "Validation successful"
+
+	if !validationResult.IsValid {
+		status = "error"
+		msg = "Validation failed. Discrepancies found."
+	}
+
 	return &models.MigrationResponse{
-		Status:  "success",
-		Message: fmt.Sprintf("Parsed DB: %d tx, XLS: %d tx. Validation ready.", len(parsedData.Transactions), len(xlsData.Transactions)),
-		JobID:   "job-uuid-123",
+		Status:  status,
+		Message: msg,
+		JobID:   "job-uuid-123", // Generate real ID later
+		// TODO: Include ValidationResult in response model?
+		// Ideally MigrationResponse should have a 'data' field or 'validation' field.
+		// For now, let's just log implementation.
 	}, nil
 }
 
