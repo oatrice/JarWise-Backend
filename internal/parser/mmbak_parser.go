@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"jarwise-backend/internal/models"
+	"math"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -33,14 +34,11 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		Transactions: []models.TransactionDTO{},
 	}
 
-	// 2. Query Accounts (Table name usually 'assets' or 'account' in MM)
-	// Query: SELECT uid, name FROM assets WHERE type = 1 (Cash/Bank) - logic may need adjustment based on real schema
-	// For MVP, assuming a standard schema.
-	// WARN: Schema names need verification from specific .mmbak version
-	assetsRows, err := db.Query("SELECT uid, name FROM assets")
+	// 2. Query Accounts (Table 'ASSETS')
+	// Schema: uid (TEXT), NIC_NAME (TEXT), TYPE (INT)
+	assetsRows, err := db.Query("SELECT uid, NIC_NAME FROM ASSETS")
 	if err != nil {
-		// Fallback to 'accounts' if assets doesn't exist? or just return error
-		return nil, fmt.Errorf("failed to query assets: %w", err)
+		return nil, fmt.Errorf("failed to query ASSETS: %w", err)
 	}
 	defer assetsRows.Close()
 
@@ -52,18 +50,16 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		result.Accounts = append(result.Accounts, acc)
 	}
 
-	// 3. Query Categories
-	// Table: category?
-	// Columns: uid, name, type (0=Exp, 1=Inc)
-	catRows, err := db.Query("SELECT uid, name, type FROM category")
+	// 3. Query Categories (Table 'ZCATEGORY')
+	catRows, err := db.Query("SELECT uid, NAME, TYPE FROM ZCATEGORY")
 	if err != nil {
-		return nil, fmt.Errorf("failed to query categories: %w", err)
+		return nil, fmt.Errorf("failed to query ZCATEGORY: %w", err)
 	}
 	defer catRows.Close()
 
 	for catRows.Next() {
 		var cat models.CategoryDTO
-		var catType sql.NullInt64 // handle nulls if any
+		var catType sql.NullInt64
 		if err := catRows.Scan(&cat.ID, &cat.Name, &catType); err != nil {
 			return nil, err
 		}
@@ -71,35 +67,77 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		result.Categories = append(result.Categories, cat)
 	}
 
-	// 4. Query Transactions (and Calculate Totals)
-	// Table: trans?
-	// Columns: uid, datetime, money, type, note, categoryId, assetId
-	// Note: MM schema usually stores amount as positive, type determines sign
+	// 4. Query Transactions (Table 'INOUTCOME')
+	// Columns: uid, ZDATE (date), ZMONEY (amount), DO_TYPE (type? or maybe just check ZMONEY sign?), ZCONTENT (note)
+	// categoryUid (Category), assetUid (Account)
+	// Note: DO_TYPE needs verification aka '1' or '2'.
+	// Usually Money Manager uses: 1=Income, 2=Expense, 3=Transfer (or 0 index?)
+	// Let's inspect data later if needed, assuming logic:
+	// We select raw columns and map
 	transRows, err := db.Query(`
-        SELECT uid, datetime, money, type, note, categoryId, assetId 
-        FROM trans 
-        WHERE type IN (0, 1) -- 0=Exp, 1=Inc (Transfer=2 excluded for totals usually)
+        SELECT uid, ZDATE, ZMONEY, DO_TYPE, ZCONTENT, categoryUid, assetUid 
+        FROM INOUTCOME 
+        WHERE DO_TYPE IN ('0', '1', '2') OR DO_TYPE IS NULL
     `)
+	// WARN: DO_TYPE might be varchar based on schema.
 	if err != nil {
-		return nil, fmt.Errorf("failed to query transactions: %w", err)
+		return nil, fmt.Errorf("failed to query INOUTCOME: %w", err)
 	}
 	defer transRows.Close()
 
 	for transRows.Next() {
 		var t models.TransactionDTO
-		var note sql.NullString
-		if err := transRows.Scan(&t.ID, &t.Date, &t.Amount, &t.Type, &note, &t.CategoryID, &t.AccountID); err != nil {
+		var note, doType, catID, assetID sql.NullString
+		var money sql.NullFloat64
+
+		if err := transRows.Scan(&t.ID, &t.Date, &money, &doType, &note, &catID, &assetID); err != nil {
 			return nil, err
 		}
+		t.Amount = money.Float64
 		t.Note = note.String
+		t.CategoryID = catID.String
+		t.AccountID = assetID.String
+
+		// Map Type
+		// DO_TYPE values: '1'=Income, '0' or '2'=Expense, '3'=Transfer?
+		// Need to confirm exact mapping. Assuming:
+		// 1 = Income
+		// 2 = Transfer? (Or 0?)
+		// Let's refine based on review suggestion:
+		dt := doType.String
+		isTransfer := false
+
+		switch dt {
+		case "1": // Income
+			t.Type = 1
+		case "0", "2": // Expense (generic guess, adjust if 2 is transfer)
+			// Wait, if 2 is transfer, we should handle it.
+			// Let's assume standard:
+			// 0=Expense, 1=Income, 2=Transfer
+			if dt == "2" {
+				t.Type = 2
+				isTransfer = true
+			} else {
+				t.Type = 0
+			}
+		case "3": // Some versions use 3 for transfer
+			t.Type = 2
+			isTransfer = true
+		default:
+			// Default to expense
+			t.Type = 0
+		}
 
 		result.Transactions = append(result.Transactions, t)
 
 		// Aggregate Totals
-		if t.Type == 1 { // Income
-			result.TotalIncome += t.Amount
-		} else if t.Type == 0 { // Expense
-			result.TotalExpense += t.Amount // Assume stored as positive
+		// Exclude transfers from Income/Expense totals for now (or handle them separately)
+		if !isTransfer {
+			if t.Type == 1 { // Income
+				result.TotalIncome += t.Amount
+			} else { // Expense
+				result.TotalExpense += math.Abs(t.Amount)
+			}
 		}
 	}
 

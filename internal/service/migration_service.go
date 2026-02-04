@@ -4,13 +4,18 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"jarwise-backend/internal/importer"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/parser"
+	"jarwise-backend/internal/validator"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"time"
 )
+
+// TOGGLE: Set to true to allow import even if validation fails
+const BypassValidation = false
 
 // MigrationService defines the interface for handling migration logic
 type MigrationService interface {
@@ -41,10 +46,7 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	mmParser := parser.NewMmbakParser()
 	parsedData, err := mmParser.Parse(mmbakPath)
 	if err != nil {
-		return &models.MigrationResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse database: %v", err),
-		}, nil // Return 200 with error status for UI handling? Or actual error
+		return nil, fmt.Errorf("failed to parse database: %w", err)
 	}
 
 	fmt.Printf("Parsed Data: %d Accounts, %d Categories, %d Transactions\n",
@@ -61,19 +63,47 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	xlsParser := parser.NewXlsParser()
 	xlsData, err := xlsParser.Parse(xlsPath)
 	if err != nil {
-		return &models.MigrationResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse XLS report: %v", err),
-		}, nil
+		return nil, fmt.Errorf("failed to parse XLS report: %w", err)
 	}
 
 	fmt.Printf("Parsed XLS Data: %d Transactions\n", len(xlsData.Transactions))
 	fmt.Printf("DB Total Income: %.2f, XLS Total Income: %.2f\n", parsedData.TotalIncome, xlsData.TotalIncome)
 
-	// Mock response with comparison data
+	// 4. Validate
+	v := validator.NewValidator()
+	validationResult := v.Validate(parsedData, xlsData)
+
+	status := "preview" // Ready for preview if valid
+	msg := "Validation successful"
+
+	if !validationResult.IsValid {
+		if BypassValidation {
+			fmt.Println("WARNING: Validation failed but proceeding (BypassValidation = true)")
+			msg = "Import successful (with validation warnings)"
+		} else {
+			return &models.MigrationResponse{
+				Status:  "error",
+				Message: "Validation failed. Discrepancies found.",
+			}, nil
+		}
+	} else {
+		msg = "Import successful!"
+	}
+
+	// 5. Import (Only if valid or bypassed)
+	importer := importer.NewImporter()
+	if err := importer.ImportData(parsedData); err != nil {
+		return &models.MigrationResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Import failed: %v", err),
+		}, nil
+	}
+
+	status = "success"
+
 	return &models.MigrationResponse{
-		Status:  "success",
-		Message: fmt.Sprintf("Parsed DB: %d tx, XLS: %d tx. Validation ready.", len(parsedData.Transactions), len(xlsData.Transactions)),
+		Status:  status,
+		Message: msg,
 		JobID:   "job-uuid-123",
 	}, nil
 }
