@@ -1,90 +1,92 @@
-# [Feature] Migrate Data from Money Manager App (.mmbak)
-
-<!-- Paste your generated PR description here -->
-Resolves #65
+# Transaction Linking & Transfers
 
 ## Summary
 
-This PR implements a complete data migration pipeline for importing user financial data from Money Manager app (.mmbak format) into JarWise. The migration process includes parsing SQLite database files, validating data integrity against Excel reports, and transforming Money Manager's data structure into JarWise's domain models.
+This PR implements a complete transaction management system with support for wallet-to-wallet transfers and transaction linking. The feature enables users to create atomic transfer operations that automatically generate paired expense and income transactions, maintaining referential integrity through bidirectional linking.
 
-## Key Changes
+## Changes
 
-### 📊 Data Parser (`internal/parser/mmbak_parser.go`)
-- Enhanced SQLite parsing to correctly handle Money Manager's database schema
-- Fixed transaction type mapping with proper support for Income (type 1), Expense (type 0/2), and Transfer (type 2/3)
-- Improved field ID handling by switching from `int` to `string` for better UUID compatibility
-- Added transfer exclusion logic from income/expense totals to prevent double-counting
-- Implemented robust error handling for malformed database queries
+### Core Features
 
-### ✅ Data Validator (`internal/validator/`)
-- Created validation framework comparing parsed database data against Excel reports
-- Implemented tolerance-based float comparison (epsilon: 0.01) for financial accuracy
-- Added comprehensive mismatch detection for:
-  - Transaction counts (with 100+ diff threshold for errors)
-  - Total income/expense amounts
-  - Balance calculations
-- Generates detailed validation results with errors, warnings, and statistics
+**Transaction Repository & Database Layer**
+- Implemented SQLite-based transaction repository with CRUD operations
+- Added `transactions` table schema with support for transaction linking via `related_transaction_id`
+- Created atomic `CreateTransfer` operation using database transactions to ensure data consistency
+- Implemented smart deletion logic that automatically unlinks related transactions
+- Added comprehensive unit tests for repository operations
 
-### 💾 Data Importer (`internal/importer/importer.go`)
-- Built data transformation layer mapping Money Manager models to JarWise domain:
-  - `AccountDTO` → `Wallet` (with currency and balance preservation)
-  - `CategoryDTO` → `Jar` (with parent-child hierarchy support)
-  - `TransactionDTO` → `Transaction` (with proper date parsing and type conversion)
-- Implemented mock persistence layer ready for database integration
-- Added sample data verification for debugging
+**Transfer Service**
+- Built transfer service layer that orchestrates the creation of linked transaction pairs
+- Generates expense (negative amount) and income (positive amount) transactions atomically
+- Links transactions bidirectionally using UUIDs for referential integrity
+- Handles business logic for wallet-to-wallet transfers with proper validation
 
-### 🔧 Migration Service (`internal/service/migration_service.go`)
-- Orchestrated end-to-end migration workflow: Upload → Parse → Validate → Import
-- Added `BypassValidation` toggle for development flexibility
-- Improved error handling with proper error propagation instead of status wrapping
-- Enhanced response messaging based on validation results
+**REST API Endpoints**
+- Added `POST /api/v1/transfers` endpoint for creating wallet transfers
+- Implemented request validation for wallet IDs, amounts, and date formats
+- Returns both expense and income transactions in a structured response
+- Added mock `/api/wallets` endpoint for manual testing and verification
 
-### 📦 Domain Models (`internal/models/`)
-- Created core JarWise domain models: `Wallet`, `Jar`, `Transaction`
-- Updated Money Manager DTOs to use `string` IDs throughout for consistency
-- Added support for transfer transactions with `ToWalletID` field
+**Data Migration Enhancements**
+- Improved date parsing with better error handling for transaction imports
+- Added fallback mechanisms for multiple date formats (RFC3339, YYYY-MM-DD)
+- Enhanced error logging for debugging migration issues
 
-## Migration Pipeline Flow
+### Technical Implementation
 
-```
-Upload .mmbak + .xls
-       ↓
-Parse SQLite DB ──→ ParsedData (Accounts, Categories, Transactions)
-       ↓
-Parse Excel Report ──→ ParsedData (Reference totals)
-       ↓
-Validate ──→ Compare counts & totals ──→ ValidationResult
-       ↓
-Import ──→ Transform to domain models ──→ Persist to DB
-       ↓
-Response (success/error with stats)
+**Database Schema**
+```sql
+CREATE TABLE transactions (
+    id TEXT PRIMARY KEY,
+    amount REAL NOT NULL,
+    description TEXT,
+    date DATETIME NOT NULL,
+    type TEXT NOT NULL,
+    wallet_id TEXT NOT NULL,
+    jar_id TEXT,
+    related_transaction_id TEXT,
+    FOREIGN KEY(related_transaction_id) REFERENCES transactions(id)
+);
 ```
 
-## Technical Improvements
+**Key Design Decisions**
+- Used database transactions to ensure atomic creation of transfer pairs
+- Implemented bidirectional linking to enable navigation in both directions
+- Soft unlinking on deletion to maintain data integrity
+- Pointer type for `RelatedTransactionID` to distinguish between null and empty string
 
-- **Type Safety**: Changed all ID fields from `int` to `string` for UUID support
-- **Data Integrity**: Added validation layer preventing silent data corruption
-- **Error Handling**: Proper error propagation with descriptive messages
-- **Flexibility**: Configurable validation bypass for testing scenarios
-- **Extensibility**: Clean separation of concerns (Parser → Validator → Importer)
+## Files Changed
 
-## Testing Notes
+- **New Files**: 6 files added (handlers, repository, service, tests, database layer)
+- **Modified Files**: 5 files updated (router, importer, domain models)
+- **Total Changes**: +1,221 insertions, -134 deletions across 18 files
 
-- Successfully handles large datasets (9000+ transactions tested)
-- Properly identifies discrepancies between database and Excel reports
-- Transfer transactions correctly excluded from income/expense aggregates
-- Date parsing supports multiple format fallbacks (YYYY-MM-DD HH:MM:SS and YYYY-MM-DD)
+## Testing
 
-## Statistics
+- ✅ Unit tests for atomic transfer creation
+- ✅ Unit tests for transaction deletion with unlinking
+- ✅ In-memory database testing for repository operations
+- ✅ Manual verification support via mock wallet endpoint
 
-- **12 files changed**: 601 insertions(+), 44 deletions(-)
-- **New packages**: `importer`, `validator`
-- **Updated packages**: `parser`, `service`, `models`
+## Impact
 
-## Next Steps
+### User Benefits
+- Users can now transfer money between wallets with a single API call
+- Transaction pairs are automatically linked, making it easy to trace transfers
+- Deleting one transaction safely unlinks its pair, preventing orphaned references
 
-- [ ] Integrate actual database persistence layer
-- [ ] Add unit tests for mappers and validators
-- [ ] Implement preview endpoint for user data verification
-- [ ] Add progress tracking for large imports
-- [ ] Support batch processing for multiple migration jobs
+### Developer Benefits
+- Clean separation of concerns across layers (handler → service → repository)
+- Reusable repository interface for future transaction operations
+- Comprehensive test coverage for critical transfer logic
+- Foundation for future features like refunds, reimbursements, and transaction reconciliation
+
+## Related
+
+Closes https://github.com/owner/repo/issues/71
+
+## Migration Notes
+
+- Database schema will be automatically applied on application startup
+- Existing transactions remain unaffected
+- New `related_transaction_id` field defaults to NULL for backward compatibility
