@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// TOGGLE: Set to true to allow import even if validation fails
+const BypassValidation = false
+
 // MigrationService defines the interface for handling migration logic
 type MigrationService interface {
 	ProcessUpload(ctx context.Context, mmbak, xls *multipart.FileHeader) (*models.MigrationResponse, error)
@@ -74,22 +77,29 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	msg := "Validation successful"
 
 	if !validationResult.IsValid {
-		status = "error"
-		msg = "Validation failed. Discrepancies found."
-	} else {
-		// 5. Import (if valid)
-		// In real app, this might be a separate step "Confirm import".
-		// For this task, we execute the import logic to prove it works.
-		importer := importer.NewImporter()
-		if err := importer.ImportData(parsedData); err != nil {
+		if BypassValidation {
+			fmt.Println("WARNING: Validation failed but proceeding (BypassValidation = true)")
+			msg = "Import successful (with validation warnings)"
+		} else {
 			return &models.MigrationResponse{
 				Status:  "error",
-				Message: fmt.Sprintf("Import failed: %v", err),
+				Message: "Validation failed. Discrepancies found.",
 			}, nil
 		}
-		msg = "Import successful! Data saved to JarWise."
-		status = "success"
+	} else {
+		msg = "Import successful!"
 	}
+
+	// 5. Import (Only if valid or bypassed)
+	importer := importer.NewImporter()
+	if err := importer.ImportData(parsedData); err != nil {
+		return &models.MigrationResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Import failed: %v", err),
+		}, nil
+	}
+
+	status = "success"
 
 	return &models.MigrationResponse{
 		Status:  status,
