@@ -50,10 +50,30 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	fmt.Printf("Parsed Data: %d Accounts, %d Categories, %d Transactions\n",
 		len(parsedData.Accounts), len(parsedData.Categories), len(parsedData.Transactions))
 
-	// Mock response for now (until Validation step)
+	// 3. Parse .xls (HTML)
+	// Save .xls to temp
+	xlsPath := filepath.Join(tempDir, fmt.Sprintf("upload-%d.xls", time.Now().UnixNano()))
+	if err := saveMultipartFile(xls, xlsPath); err != nil {
+		return nil, fmt.Errorf("failed to save temp xls file: %w", err)
+	}
+	defer os.Remove(xlsPath)
+
+	xlsParser := parser.NewXlsParser()
+	xlsData, err := xlsParser.Parse(xlsPath)
+	if err != nil {
+		return &models.MigrationResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Failed to parse XLS report: %v", err),
+		}, nil
+	}
+
+	fmt.Printf("Parsed XLS Data: %d Transactions\n", len(xlsData.Transactions))
+	fmt.Printf("DB Total Income: %.2f, XLS Total Income: %.2f\n", parsedData.TotalIncome, xlsData.TotalIncome)
+
+	// Mock response with comparison data
 	return &models.MigrationResponse{
-		Status:  "success", // Changed to success for testing parser
-		Message: fmt.Sprintf("Parsed %d transactions. Total Income: %.2f", len(parsedData.Transactions), parsedData.TotalIncome),
+		Status:  "success",
+		Message: fmt.Sprintf("Parsed DB: %d tx, XLS: %d tx. Validation ready.", len(parsedData.Transactions), len(xlsData.Transactions)),
 		JobID:   "job-uuid-123",
 	}, nil
 }
