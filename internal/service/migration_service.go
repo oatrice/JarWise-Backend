@@ -43,10 +43,7 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	mmParser := parser.NewMmbakParser()
 	parsedData, err := mmParser.Parse(mmbakPath)
 	if err != nil {
-		return &models.MigrationResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse database: %v", err),
-		}, nil // Return 200 with error status for UI handling? Or actual error
+		return nil, fmt.Errorf("failed to parse database: %w", err)
 	}
 
 	fmt.Printf("Parsed Data: %d Accounts, %d Categories, %d Transactions\n",
@@ -63,10 +60,7 @@ func (s *migrationService) ProcessUpload(ctx context.Context, mmbak, xls *multip
 	xlsParser := parser.NewXlsParser()
 	xlsData, err := xlsParser.Parse(xlsPath)
 	if err != nil {
-		return &models.MigrationResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse XLS report: %v", err),
-		}, nil
+		return nil, fmt.Errorf("failed to parse XLS report: %w", err)
 	}
 
 	fmt.Printf("Parsed XLS Data: %d Transactions\n", len(xlsData.Transactions))

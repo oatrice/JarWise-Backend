@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"jarwise-backend/internal/models"
+	"math"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -98,25 +99,45 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		t.AccountID = assetID.String
 
 		// Map Type
-		// If logic is unclear, we might logging raw DO_TYPE values helps.
-		// Standard guess: 'Inc' or 'Exp'? Or '1'/'0'?
-		// Schema said DO_TYPE is VARCHAR due to index creation? "CREATE INDEX ... ON INOUTCOME (DO_TYPE)"
-		// Let's assume numeric string for now.
+		// DO_TYPE values: '1'=Income, '0' or '2'=Expense, '3'=Transfer?
+		// Need to confirm exact mapping. Assuming:
+		// 1 = Income
+		// 2 = Transfer? (Or 0?)
+		// Let's refine based on review suggestion:
 		dt := doType.String
-		if dt == "1" { // Income?
+		isTransfer := false
+
+		switch dt {
+		case "1": // Income
 			t.Type = 1
-		} else {
-			t.Type = 0 // Expense
-			// Fix negative amount if needed?
+		case "0", "2": // Expense (generic guess, adjust if 2 is transfer)
+			// Wait, if 2 is transfer, we should handle it.
+			// Let's assume standard:
+			// 0=Expense, 1=Income, 2=Transfer
+			if dt == "2" {
+				t.Type = 2
+				isTransfer = true
+			} else {
+				t.Type = 0
+			}
+		case "3": // Some versions use 3 for transfer
+			t.Type = 2
+			isTransfer = true
+		default:
+			// Default to expense
+			t.Type = 0
 		}
 
 		result.Transactions = append(result.Transactions, t)
 
 		// Aggregate Totals
-		if t.Type == 1 { // Income
-			result.TotalIncome += t.Amount
-		} else { // Expense
-			result.TotalExpense += t.Amount
+		// Exclude transfers from Income/Expense totals for now (or handle them separately)
+		if !isTransfer {
+			if t.Type == 1 { // Income
+				result.TotalIncome += t.Amount
+			} else { // Expense
+				result.TotalExpense += math.Abs(t.Amount)
+			}
 		}
 	}
 
