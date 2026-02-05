@@ -87,12 +87,13 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 
 	for transRows.Next() {
 		var t models.TransactionDTO
-		var note, doType, catID, assetID sql.NullString
+		var note, doType, catID, assetID, dateStr sql.NullString
 		var money sql.NullFloat64
 
-		if err := transRows.Scan(&t.ID, &t.Date, &money, &doType, &note, &catID, &assetID); err != nil {
+		if err := transRows.Scan(&t.ID, &dateStr, &money, &doType, &note, &catID, &assetID); err != nil {
 			return nil, err
 		}
+		t.Date = dateStr.String
 		t.Amount = money.Float64
 		t.Note = note.String
 		t.CategoryID = catID.String
