@@ -124,8 +124,61 @@ func TestGenerateReport_NoResults(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	if report == nil {
+		t.Fatal("expected non-nil report")
+	}
+
 	if report.TransactionCount != 0 {
 		t.Fatalf("expected 0 transactions, got %d", report.TransactionCount)
+	}
+
+	if report.TotalAmount != 0 {
+		t.Fatalf("expected total amount 0, got %f", report.TotalAmount)
+	}
+
+	if len(report.Transactions) != 0 {
+		t.Fatalf("expected empty transaction list, got %d", len(report.Transactions))
+	}
+}
+
+func TestGenerateReport_FilterByJarExcludesEmptyJarID(t *testing.T) {
+	transactions := []models.Transaction{
+		{
+			ID:       "tx-1",
+			Amount:   50.0,
+			Date:     time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC),
+			Type:     "expense",
+			JarID:    "",
+			WalletID: "wallet-1",
+		},
+		{
+			ID:       "tx-2",
+			Amount:   30.0,
+			Date:     time.Date(2026, 1, 12, 12, 0, 0, 0, time.UTC),
+			Type:     "expense",
+			JarID:    "jar-1",
+			WalletID: "wallet-1",
+		},
+	}
+
+	service := NewReportService(&fakeReportRepo{transactions: transactions})
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
+
+	report, err := service.GenerateReport(context.Background(), models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+		JarIDs:    []string{"jar-1"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if report.TransactionCount != 1 {
+		t.Fatalf("expected 1 transaction, got %d", report.TransactionCount)
+	}
+	if report.Transactions[0].ID != "tx-2" {
+		t.Fatalf("unexpected transaction ID: %s", report.Transactions[0].ID)
 	}
 }
 
