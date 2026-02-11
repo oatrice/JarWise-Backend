@@ -35,9 +35,9 @@ func TestParse_ValidFile(t *testing.T) {
 		t.Errorf("Expected 3 categories, got %d", len(result.Categories))
 	}
 
-	// Verify transactions
-	if len(result.Transactions) != 3 {
-		t.Errorf("Expected 3 transactions, got %d", len(result.Transactions))
+	// Verify transactions (2 expense + 1 income + 1 transfer)
+	if len(result.Transactions) != 4 {
+		t.Errorf("Expected 4 transactions, got %d", len(result.Transactions))
 	}
 
 	// Verify totals
@@ -290,5 +290,60 @@ func TestParse_TransactionTypes(t *testing.T) {
 
 	if expenseCount != 2 {
 		t.Errorf("Expected 2 expense transactions, got %d", expenseCount)
+	}
+}
+
+// =============================================================================
+// 🟥 Transfer Transaction Tests (DO_TYPE = '3')
+// =============================================================================
+
+func TestParse_TransferTransaction_IsIncluded(t *testing.T) {
+	parser := NewMmbakParser()
+	result, err := parser.Parse(getTestdataPath("valid.mmbak"))
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// valid.mmbak now has 4 transactions: 2 expense, 1 income, 1 transfer
+	if len(result.Transactions) != 4 {
+		t.Errorf("Expected 4 transactions (including transfer), got %d", len(result.Transactions))
+	}
+
+	// Find the transfer transaction (tx4)
+	found := false
+	for _, tx := range result.Transactions {
+		if tx.ID == "tx4" {
+			found = true
+			if tx.Type != 2 {
+				t.Errorf("Expected transfer Type=2, got %d", tx.Type)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("Expected to find transfer transaction 'tx4' but it was missing")
+	}
+}
+
+func TestParse_TransferTransaction_ExcludedFromTotals(t *testing.T) {
+	parser := NewMmbakParser()
+	result, err := parser.Parse(getTestdataPath("valid.mmbak"))
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// Transfer amount (5000) should NOT be in TotalIncome or TotalExpense
+	expectedIncome := 50000.0
+	expectedExpense := 135.50 // 100.50 + 35.00
+
+	if result.TotalIncome != expectedIncome {
+		t.Errorf("Expected TotalIncome %.2f (transfer excluded), got %.2f", expectedIncome, result.TotalIncome)
+	}
+
+	if result.TotalExpense != expectedExpense {
+		t.Errorf("Expected TotalExpense %.2f (transfer excluded), got %.2f", expectedExpense, result.TotalExpense)
 	}
 }

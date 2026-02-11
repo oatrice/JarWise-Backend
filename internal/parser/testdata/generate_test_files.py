@@ -58,6 +58,8 @@ def create_valid_mmbak():
     cursor.execute("INSERT INTO INOUTCOME VALUES ('tx1', '2025-01-15', 100.50, '0', 'Lunch', 'cat1', 'acc1')")
     cursor.execute("INSERT INTO INOUTCOME VALUES ('tx2', '2025-01-20', 50000.00, '1', 'Monthly Salary', 'cat2', 'acc2')")
     cursor.execute("INSERT INTO INOUTCOME VALUES ('tx3', '2025-01-22', 35.00, '0', 'Bus fare', 'cat3', 'acc1')")
+    # Transfer transaction (DO_TYPE = '3')
+    cursor.execute("INSERT INTO INOUTCOME VALUES ('tx4', '2025-01-25', 5000.00, '3', 'Transfer to savings', 'cat1', 'acc1')")
     
     conn.commit()
     conn.close()
