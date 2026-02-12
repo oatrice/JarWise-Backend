@@ -1,92 +1,65 @@
-# Transaction Linking & Transfers
+Closes: https://github.com/owner/repo/issues/68
 
-## Summary
+## 📝 Description
 
-This PR implements a complete transaction management system with support for wallet-to-wallet transfers and transaction linking. The feature enables users to create atomic transfer operations that automatically generate paired expense and income transactions, maintaining referential integrity through bidirectional linking.
+This pull request introduces the backend foundation for the new report filtering feature, as outlined in issue #68. It adds a new API endpoint that allows users to generate transaction reports based on a flexible set of filters, including date ranges, multiple categories (Jars), and multiple accounts (Wallets).
 
-## Changes
+To support this new feature and improve overall data integrity, this PR also significantly enhances the reliability of the `.mmbak` file parser. It now gracefully handles malformed date entries and correctly includes transfer transactions in the dataset. A comprehensive test suite has been added for both the new reporting service and the improved parser to ensure stability and correctness.
 
-### Core Features
+**Note:** This PR implements the backend API and logic. The UI components (filter panel, checkboxes, etc.) will be handled in a separate, subsequent PR.
 
-**Transaction Repository & Database Layer**
-- Implemented SQLite-based transaction repository with CRUD operations
-- Added `transactions` table schema with support for transaction linking via `related_transaction_id`
-- Created atomic `CreateTransfer` operation using database transactions to ensure data consistency
-- Implemented smart deletion logic that automatically unlinks related transactions
-- Added comprehensive unit tests for repository operations
+## ✨ Key Changes
 
-**Transfer Service**
-- Built transfer service layer that orchestrates the creation of linked transaction pairs
-- Generates expense (negative amount) and income (positive amount) transactions atomically
-- Links transactions bidirectionally using UUIDs for referential integrity
-- Handles business logic for wallet-to-wallet transfers with proper validation
+### 🚀 Feature Implementation
 
-**REST API Endpoints**
-- Added `POST /api/v1/transfers` endpoint for creating wallet transfers
-- Implemented request validation for wallet IDs, amounts, and date formats
-- Returns both expense and income transactions in a structured response
-- Added mock `/api/wallets` endpoint for manual testing and verification
+- **New Report Endpoint:** Added a `GET /api/v1/reports` endpoint to fetch filtered transaction data.
+- **Multi-Select Filtering:** The endpoint supports the following query parameters:
+    - `start_date` & `end_date`: Filter by a specific date range (defaults to the current month).
+    - `jar_ids` (alias `category_ids`): A comma-separated list of category IDs to include.
+    - `wallet_ids` (alias `account_ids`): A comma-separated list of account IDs to include.
+- **Backend Architecture:** Implemented a clean `Handler -> Service -> Repository` pattern for the reporting feature.
+    - `ReportHandler`: Parses API requests and validates parameters.
+    - `ReportService`: Contains the core business logic for generating reports.
+    - `TransactionRepository`: Extended with a new method to query the database using the `ReportFilter` model.
 
-**Data Migration Enhancements**
-- Improved date parsing with better error handling for transaction imports
-- Added fallback mechanisms for multiple date formats (RFC3339, YYYY-MM-DD)
-- Enhanced error logging for debugging migration issues
+### 🛠️ Parser Improvements & Testing
 
-### Technical Implementation
+- **Improved Parser Reliability:** The `mmbak` parser now handles `NULL` or invalid date strings in the database without crashing, ensuring more robust data ingestion.
+- **Inclusion of Transfers:** The parser now correctly identifies and includes transfer transactions (`DO_TYPE = '3'`), making the imported dataset more complete.
+- **Comprehensive Parser Test Suite:** A new, extensive test suite (`mmbak_parser_test.go`) has been added to cover various scenarios:
+    - Valid files
+    - Files with malformed or `NULL` dates
+    - Corrupt or empty database files
+    - Missing tables
+- **Test Data Generation:** A Python script (`generate_test_files.py`) is included to programmatically create the `.mmbak` test files, ensuring tests are reproducible and easy to extend.
 
-**Database Schema**
-```sql
-CREATE TABLE transactions (
-    id TEXT PRIMARY KEY,
-    amount REAL NOT NULL,
-    description TEXT,
-    date DATETIME NOT NULL,
-    type TEXT NOT NULL,
-    wallet_id TEXT NOT NULL,
-    jar_id TEXT,
-    related_transaction_id TEXT,
-    FOREIGN KEY(related_transaction_id) REFERENCES transactions(id)
-);
-```
+## 🧪 How to Test
 
-**Key Design Decisions**
-- Used database transactions to ensure atomic creation of transfer pairs
-- Implemented bidirectional linking to enable navigation in both directions
-- Soft unlinking on deletion to maintain data integrity
-- Pointer type for `RelatedTransactionID` to distinguish between null and empty string
+After running the backend service, you can test the new endpoint using `curl` or any API client.
 
-## Files Changed
+1.  **Get a report for the current month (default behavior):**
+    ```bash
+    curl "http://localhost:8080/api/v1/reports"
+    ```
 
-- **New Files**: 6 files added (handlers, repository, service, tests, database layer)
-- **Modified Files**: 5 files updated (router, importer, domain models)
-- **Total Changes**: +1,221 insertions, -134 deletions across 18 files
+2.  **Filter by a specific date range:**
+    ```bash
+    curl "http://localhost:8080/api/v1/reports?start_date=2024-01-01&end_date=2024-03-31"
+    ```
 
-## Testing
+3.  **Filter by multiple categories (Jars):**
+    ```bash
+    # Assuming category IDs 'cat1' and 'cat3' exist
+    curl "http://localhost:8080/api/v1/reports?jar_ids=cat1,cat3"
+    ```
 
-- ✅ Unit tests for atomic transfer creation
-- ✅ Unit tests for transaction deletion with unlinking
-- ✅ In-memory database testing for repository operations
-- ✅ Manual verification support via mock wallet endpoint
+4.  **Filter by a single account (Wallet):**
+    ```bash
+    # Assuming account ID 'acc2' exists
+    curl "http://localhost:8080/api/v1/reports?wallet_ids=acc2"
+    ```
 
-## Impact
-
-### User Benefits
-- Users can now transfer money between wallets with a single API call
-- Transaction pairs are automatically linked, making it easy to trace transfers
-- Deleting one transaction safely unlinks its pair, preventing orphaned references
-
-### Developer Benefits
-- Clean separation of concerns across layers (handler → service → repository)
-- Reusable repository interface for future transaction operations
-- Comprehensive test coverage for critical transfer logic
-- Foundation for future features like refunds, reimbursements, and transaction reconciliation
-
-## Related
-
-Closes https://github.com/owner/repo/issues/71
-
-## Migration Notes
-
-- Database schema will be automatically applied on application startup
-- Existing transactions remain unaffected
-- New `related_transaction_id` field defaults to NULL for backward compatibility
+5.  **Combine all filters:**
+    ```bash
+    curl "http://localhost:8080/api/v1/reports?start_date=2024-01-01&end_date=2024-01-31&jar_ids=cat1&wallet_ids=acc1,acc2"
+    ```
