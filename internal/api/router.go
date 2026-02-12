@@ -26,7 +26,11 @@ func NewRouter() http.Handler {
 	txService := service.NewTransactionService(txRepo)
 	txHandler := handlers.NewTransactionHandler(txService)
 	reportService := service.NewReportService(txRepo)
+
 	reportHandler := handlers.NewReportHandler(reportService)
+
+	graphService := service.NewGraphService(txRepo)
+	graphHandler := handlers.NewGraphHandler(graphService)
 
 	// Routes
 	mux.HandleFunc("/api/v1/migrations/money-manager", func(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +43,7 @@ func NewRouter() http.Handler {
 
 	mux.HandleFunc("/api/v1/transfers", txHandler.CreateTransfer)
 	mux.HandleFunc("/api/v1/reports", reportHandler.GetReport)
+	mux.HandleFunc("/api/v1/graph/expenses", graphHandler.GetExpenseGraphData)
 
 	// Wallets (Mock for Manual Verification)
 	mux.HandleFunc("/api/wallets", func(w http.ResponseWriter, r *http.Request) {

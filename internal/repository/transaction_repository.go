@@ -14,6 +14,7 @@ type TransactionRepository interface {
 	ListByDateRange(start, end time.Time) ([]models.Transaction, error)
 	Delete(id string) error
 	Unlink(id1, id2 string) error
+	GetExpenseGraphData(jarID, period string) ([]models.GraphDataPoint, error)
 }
 
 type sqliteTransactionRepository struct {
@@ -181,4 +182,51 @@ func (r *sqliteTransactionRepository) Unlink(id1, id2 string) error {
 	}
 
 	return tx.Commit()
+}
+
+func (r *sqliteTransactionRepository) GetExpenseGraphData(jarID, period string) ([]models.GraphDataPoint, error) {
+	var dateFormat string
+	switch period {
+	case "weekly":
+		dateFormat = "%Y-%W" // Standard ISO week number might be %Y-%V or similar, but %W is week of year (00-53) starting Monday
+	case "monthly":
+		dateFormat = "%Y-%m"
+	case "yearly":
+		dateFormat = "%Y"
+	default:
+		return nil, fmt.Errorf("invalid period: %s", period)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			strftime('%s', date) as period_label, 
+			ABS(SUM(amount)) as total_amount
+		FROM transactions 
+		WHERE 
+			jar_id = ? 
+			AND type = 'expense'
+		GROUP BY period_label
+		ORDER BY period_label ASC
+	`, dateFormat)
+
+	rows, err := r.db.Query(query, jarID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dataPoints []models.GraphDataPoint
+	for rows.Next() {
+		var label string
+		var amount float64
+		if err := rows.Scan(&label, &amount); err != nil {
+			return nil, err
+		}
+		dataPoints = append(dataPoints, models.GraphDataPoint{
+			Label:  label,
+			Amount: amount,
+		})
+	}
+
+	return dataPoints, nil
 }
