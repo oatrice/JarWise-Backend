@@ -44,6 +44,16 @@ Uploads Money Manager backup files for migration.
 }
 ```
 
+### Reports
+
+**GET** `/api/v1/reports`
+
+Generates a transaction report. Can be filtered by a date range.
+
+- **Query Params**:
+  - `start_date` (optional): The start date for the report (e.g., `YYYY-MM-DD`).
+  - `end_date` (optional): The end date for the report (e.g., `YYYY-MM-DD`).
+
 ## 📂 Project Structure
 
 - `cmd/server`: Application entry point.

@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"fmt"
 	"jarwise-backend/internal/models"
+	"time"
 )
 
 type TransactionRepository interface {
 	Create(tx *models.Transaction) error
 	CreateTransfer(expense, income *models.Transaction) error
 	GetByID(id string) (*models.Transaction, error)
+	ListByDateRange(start, end time.Time) ([]models.Transaction, error)
 	Delete(id string) error
 	Unlink(id1, id2 string) error
 }
@@ -89,6 +91,43 @@ func (r *sqliteTransactionRepository) GetByID(id string) (*models.Transaction, e
 	}
 
 	return &tx, nil
+}
+
+func (r *sqliteTransactionRepository) ListByDateRange(start, end time.Time) ([]models.Transaction, error) {
+	query := `SELECT id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
+		FROM transactions
+		WHERE date >= ? AND date <= ?
+		ORDER BY date DESC`
+
+	rows, err := r.db.Query(query, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []models.Transaction
+	for rows.Next() {
+		var tx models.Transaction
+		var relatedID sql.NullString
+		var jarID sql.NullString
+
+		if err := rows.Scan(&tx.ID, &tx.Amount, &tx.Description, &tx.Date, &tx.Type, &tx.WalletID, &jarID, &relatedID); err != nil {
+			return nil, err
+		}
+		if relatedID.Valid {
+			tx.RelatedTransactionID = &relatedID.String
+		}
+		if jarID.Valid {
+			tx.JarID = jarID.String
+		}
+		results = append(results, tx)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (r *sqliteTransactionRepository) Delete(id string) error {

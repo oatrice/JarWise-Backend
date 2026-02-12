@@ -1,84 +1,51 @@
 # Luma Code Review Report
 
-**Date:** 2026-02-04 19:12:32
-**Files Reviewed:** ['go.mod', 'draft_pr_prompt.md', 'internal/db/sqlite.go', 'internal/api/router.go', 'draft_pr_body.md', 'internal/models/domain.go', '.gitignore', 'internal/repository/transaction_repository.go', 'internal/service/transaction_service.go', 'internal/repository/transaction_repository_test.go', '.luma_state.json', 'internal/api/handlers/transaction_handler.go', 'go.sum']
+**Date:** 2026-02-11 22:55:09
+**Files Reviewed:** ['internal/service/report_service_test.go', 'internal/parser/testdata/non_existent.mmbak', 'internal/repository/transaction_repository.go', 'internal/parser/mmbak_parser.go', 'code_review.md', 'internal/parser/testdata/corrupt.mmbak', 'internal/api/handlers/report_handler.go', 'internal/api/router.go', 'internal/service/report_service.go', 'internal/parser/testdata/generate_test_files.py', 'internal/models/report.go', 'internal/parser/mmbak_parser_test.go']
 
 ## 📝 Reviewer Feedback
 
-There are two issues in the provided code that need to be addressed.
+There is a logic error in the `mmbak_parser.go` file.
 
-### 1. Critical: Incorrect JSON Struct Tags
+**File:** `internal/parser/mmbak_parser.go`
 
-**File:** `internal/models/domain.go` (and other model files like `internal/validator/models.go`)
+**Issue:**
+The SQL query used to fetch transactions from the `INOUTCOME` table is inconsistent with the Go code that processes the transaction types. The query only selects transactions where `DO_TYPE` is '0', '1', or '2', but the `switch` statement that follows has a case to handle `DO_TYPE` '3' (for transfers).
 
-**Problem:** The JSON struct tags are formatted with a space after the colon, for example, `` `json: "id"` ``. The standard Go `encoding/json` package will not parse this tag correctly. The correct format has no space: `` `json:"id"` ``. This will cause JSON serialization and deserialization to fail or produce unexpected results (e.g., using the Go field names like `ID` instead of the specified lowercase names like `id`).
+Because of this discrepancy, any transaction marked as a transfer with `DO_TYPE = '3'` in the source `.mmbak` file will be ignored by the query and never parsed, leading to incomplete data processing.
 
-**Fix:** Remove the space after the colon in all JSON struct tags across all model files.
+**Fix:**
+Update the SQL query to include `'3'` in the `WHERE` clause to ensure transfer transactions are selected from the database.
 
-**Example:**
-
+**Change this:**
 ```go
-// In internal/models/domain.go
+// in internal/parser/mmbak_parser.go, line 79
 
-// Incorrect:
-type Wallet struct {
-	ID       string  `json: "id"`
-	Name     string  `json: "name"`
-	// ...
-}
-
-// Correct:
-type Wallet struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	// ...
-}
+	transRows, err := db.Query(`
+        SELECT uid, ZDATE, ZMONEY, DO_TYPE, ZCONTENT, categoryUid, assetUid 
+        FROM INOUTCOME 
+        WHERE DO_TYPE IN ('0', '1', '2') OR DO_TYPE IS NULL
+    `)
 ```
 
-This correction needs to be applied to `Wallet`, `Jar`, and `Transaction` structs in `domain.go`, as well as the `ValidationResult` struct in `validator/models.go`.
-
-### 2. Bug: Unhandled Error in Date Parsing Can Lead to Data Corruption
-
-**File:** `internal/importer/importer.go`
-
-**Problem:** In the `mapTransactions` function, the fallback logic for parsing dates ignores the error returned by `time.Parse`. If a date string does not match either of the expected formats, the error is discarded (`_`), and the `date` variable will contain the zero value for `time.Time` (`0001-01-01 00:00:00 UTC`). This incorrect date will be silently saved to the database, corrupting the transaction data.
-
-**Code with issue:**
+**To this:**
 ```go
-// ...
-date, err := time.Parse(layout, t.Date)
-if err != nil {
-    // Fallback for YYYY-MM-DD
-    date, _ = time.Parse("2006-01-02", t.Date) // Error is ignored here
-}
-// ...
-```
+// in internal/parser/mmbak_parser.go, line 79
 
-**Fix:** The error from the fallback parse must be handled. If parsing fails, you should at least log a warning and skip the problematic transaction, or return an error to stop the import process entirely.
-
-**Example Fix (Skipping the invalid record):**
-```go
-// ...
-for _, t := range mmTrans {
-    date, err := time.Parse(layout, t.Date)
-    if err != nil {
-        // Fallback for YYYY-MM-DD
-        var errFallback error
-        date, errFallback = time.Parse("2006-01-02", t.Date)
-        if errFallback != nil {
-            // Log the failure and skip this transaction to prevent importing bad data
-            fmt.Printf("WARN: Could not parse date string '%s' for transaction ID %s. Skipping transaction.\n", t.Date, t.ID)
-            continue 
-        }
-    }
-    // ... rest of the loop
-}
-// ...
+	transRows, err := db.Query(`
+        SELECT uid, ZDATE, ZMONEY, DO_TYPE, ZCONTENT, categoryUid, assetUid 
+        FROM INOUTCOME 
+        WHERE DO_TYPE IN ('0', '1', '2', '3') OR DO_TYPE IS NULL
+    `)
 ```
 
 ## 🧪 Test Suggestions
 
-*   **Empty `.mmbak` File:** Test the migration with a structurally valid `.mmbak` file that contains no accounts, categories, or transactions. The system should handle this gracefully, importing zero records without crashing or producing errors.
-*   **Data with Referential Integrity Issues:** Test with a `.mmbak` file where a transaction record refers to an account ID or category ID that does not exist in the corresponding accounts or categories tables. The import process should either skip the invalid transaction with a clear log/error message or halt the entire process, but it must not crash.
-*   **Validation Bypass with Invalid Data:** Create a file with data that would normally fail validation (e.g., an expense transaction with a positive amount, a transaction with a missing date). First, verify that the import is rejected when validation is enabled. Second, verify that the import proceeds (and potentially imports the malformed data) when the new validation bypass toggle is activated.
+Here are 3 critical, edge-case test cases that should be added or verified for the `ReportService`:
+
+*   **Test with an invalid date range where the start date is after the end date.** The current tests all use valid date ranges. This edge case checks for proper input validation. The service should gracefully handle this by returning an error, rather than an empty or incorrect report.
+
+*   **Test with filters that result in zero transactions.** This scenario tests the filtering logic when there is no data to return. For example, use a valid date range but filter by a `JarID` and a `WalletID` that never appear together on the same transaction. The expected outcome is a valid, empty report (e.g., `TransactionCount: 0`), not an error.
+
+*   **Test date range boundaries.** Create a test where the `StartDate` and `EndDate` are set to the exact timestamp of a single known transaction. This verifies that the date range filtering is inclusive (`>= start` and `<= end`) and correctly handles transactions that fall precisely on the boundary, which can be a common source of off-by-one errors.
 

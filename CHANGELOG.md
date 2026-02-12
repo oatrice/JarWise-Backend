@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2026-02-11
+
+### Added
+- **API**: Introduced a new transaction report endpoint (`/api/v1/reports/transactions`) with support for date-range filtering.
+- **Testing**: Added a comprehensive test suite for the `.mmbak` parser, covering edge cases such as corrupted data, empty files, and invalid dates to improve import reliability.
+
+### Fixed
+- **Data Parsing**: Resolved an issue where null or invalid dates in `.mmbak` files would cause the import process to fail.
+- **API**: Corrected JSON struct tags in the report model to ensure proper API response formatting.
+
 All notable changes to the JarWise Backend project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
