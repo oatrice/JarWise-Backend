@@ -29,8 +29,17 @@ func (h *WalletHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	id := pathParts[4]
 
+	cascade := r.URL.Query().Get("cascade") == "true"
 	replacementID := r.URL.Query().Get("replacement_id")
-	if replacementID == "" {
+
+	if cascade {
+		// Cascade delete
+		err := h.repo.DeleteCascade(id)
+		if err != nil {
+			http.Error(w, "Failed to cascade delete wallet: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if replacementID == "" {
 		// Attempt direct delete
 		err := h.repo.Delete(id)
 		if err != nil {

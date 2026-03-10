@@ -24,13 +24,23 @@ func TestImportData_IncompleteData(t *testing.T) {
 	}
 
 	// 2. Action: รันการนำเข้าข้อมูล
-	// ในขั้นตอนนี้ เราคาดหวังว่าระบบควรจะทำงานต่อได้โดยข้ามรายการที่ผิดพลาด 
-	// หรือรายงานข้อผิดพลาดออกมา แทนที่จะปล่อยให้ Transaction ที่ไม่มี Wallet หลุดเข้าไปใน DB
+	// ในขั้นตอนนี้ เราคาดหวังว่าระบบจะ "ยกเลิก (Stop)" การนำเข้าทันที
 	err := imp.ImportData(incompleteData)
 
-	// 3. Assert: สำหรับ TDD Red เราจะเขียนให้มันตรวจจับว่า 
-	// หากเรายังไม่แก้ไขโค้ด โค้ดควรจะคืนค่าความเสี่ยงหรือ Error ออกมา
+	// 3. Assert
 	if err == nil {
-		t.Errorf("Expected error or warning for incomplete data, but got nil")
+		t.Errorf("Expected error for incomplete data (stop on error), but got nil")
+	}
+
+	// คาดหวังว่า Error message จะระบุว่ายกเลิก
+	expectedMsg := "import aborted"
+	if err != nil && !contains(err.Error(), expectedMsg) {
+		t.Errorf("Expected error message to contain '%s', but got: %v", expectedMsg, err)
 	}
 }
+
+// Helper for tests
+func contains(s, substr string) bool {
+	return s != "" && (s == substr || (len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr)))
+}
+

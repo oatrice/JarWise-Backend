@@ -123,3 +123,54 @@ func TestDeleteWithReplacement(t *testing.T) {
 		t.Errorf("Expected jar to be moved to wallet-b, but got %s", updatedWalletID)
 	}
 }
+
+func TestDeleteCascade(t *testing.T) {
+	dbConn := setupTestDB(t)
+	defer dbConn.Close()
+
+	repo := NewSQLiteWalletRepository(dbConn)
+	txRepo := NewSQLiteTransactionRepository(dbConn)
+
+	// 1. Setup: Create Wallet A, a Jar for A, and a Transaction for A
+	wA := &models.Wallet{ID: "wallet-a", Name: "Wallet A", Currency: "THB"}
+	repo.Create(wA)
+
+	// Create a jar and link it to Wallet A
+	_, err := dbConn.Exec("INSERT INTO jars (id, name, type, wallet_id) VALUES (?, ?, ?, ?)", "jar-1", "Food", "expense", "wallet-a")
+	if err != nil {
+		t.Fatalf("Failed to create jar: %v", err)
+	}
+
+	tx := &models.Transaction{
+		ID: "tx-a", Amount: 10, WalletID: "wallet-a", JarID: "jar-1", Date: time.Now(), Type: "expense",
+	}
+	txRepo.Create(tx)
+
+	// 2. Action: Delete A with CASCADE option
+	err = repo.DeleteCascade("wallet-a")
+	
+	// 3. Assert (Expected to fail in RED phase)
+	if err != nil {
+		t.Fatalf("DeleteCascade failed: %v", err)
+	}
+
+	// Verify wallet is deleted
+	w, _ := repo.Get("wallet-a")
+	if w != nil {
+		t.Errorf("Expected wallet-a to be deleted, but it still exists")
+	}
+
+	// Verify jar is deleted
+	var jarCount int
+	dbConn.QueryRow("SELECT COUNT(*) FROM jars WHERE id = ?", "jar-1").Scan(&jarCount)
+	if jarCount != 0 {
+		t.Errorf("Expected jar-1 to be deleted via cascade, but it still exists")
+	}
+
+	// Verify transaction is deleted
+	var txCount int
+	dbConn.QueryRow("SELECT COUNT(*) FROM transactions WHERE id = ?", "tx-a").Scan(&txCount)
+	if txCount != 0 {
+		t.Errorf("Expected tx-a to be deleted via cascade, but it still exists")
+	}
+}

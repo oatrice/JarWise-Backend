@@ -21,6 +21,9 @@ func NewImporter() *Importer {
 func (i *Importer) ImportData(data *models.ParsedData) error {
         // Validate Integrity
         validationErrors := i.validator.ValidateIntegrity(data)
+        if len(validationErrors) > 0 {
+                return fmt.Errorf("import aborted due to %d validation errors: %v", len(validationErrors), validationErrors)
+        }
 
         // Prepare IDs for filtering
         walletMap := make(map[string]bool)

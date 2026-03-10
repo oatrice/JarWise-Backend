@@ -12,6 +12,7 @@ type WalletRepository interface {
 	Delete(id string) error
 	// To satisfy Data Integrity Requirement
 	DeleteWithReplacement(id string, replacementWalletID string) error
+	DeleteCascade(id string) error
 }
 
 type sqliteWalletRepository struct {
@@ -64,6 +65,34 @@ func (r *sqliteWalletRepository) DeleteWithReplacement(id string, replacementWal
 	}
 
 	// 3. Delete the original wallet
+	_, err = tx.Exec("DELETE FROM wallets WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete wallet: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+func (r *sqliteWalletRepository) DeleteCascade(id string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Delete associated Transactions
+	_, err = tx.Exec("DELETE FROM transactions WHERE wallet_id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to cascade delete transactions: %w", err)
+	}
+
+	// 2. Delete associated Jars
+	_, err = tx.Exec("DELETE FROM jars WHERE wallet_id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to cascade delete jars: %w", err)
+	}
+
+	// 3. Delete the Wallet
 	_, err = tx.Exec("DELETE FROM wallets WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete wallet: %w", err)

@@ -1,54 +1,50 @@
 # Luma Code Review Report
 
-**Date:** 2026-02-12 22:56:44
-**Files Reviewed:** ['internal/service/graph_service.go', 'internal/service/chart_service_test.go', 'internal/repository/transaction_repository.go', 'internal/service/chart_service.go', 'internal/models/graph.go', 'internal/api/handlers/graph_handler.go', 'internal/models/chart.go', 'internal/api/router.go', '.gitignore', 'internal/api/handlers/chart_handler.go', 'internal/models/errors.go', 'go.mod']
+**Date:** 2026-03-10 11:20:04
+**Files Reviewed:** ['internal/models/errors.go', 'code_review.md', 'internal/models/domain.go', 'internal/validator/validator.go', 'internal/repository/wallet_repository_test.go', 'internal/service/graph_service.go', '.gitignore', 'go.mod', 'internal/api/handlers/chart_handler.go', 'internal/api/handlers/graph_handler.go', 'internal/api/router.go', 'internal/models/chart.go', 'internal/importer/migration_integrity_test.go', 'internal/api/handlers/wallet_handler.go', 'internal/service/chart_service.go', 'internal/repository/wallet_repository.go', 'internal/importer/importer.go', 'internal/service/chart_service_test.go', 'internal/db/sqlite.go', 'internal/repository/transaction_repository.go', 'internal/service/transaction_service.go', 'cmd/server/main.go', 'internal/models/graph.go', 'internal/service/sync_conflict_test.go']
 
 ## 📝 Reviewer Feedback
 
-There is a consistent bug across all model definitions and some handler-specific response structs regarding JSON field tagging. The backslashes are incorrectly included within the struct tag strings.
+สวัสดีครับ โค้ดที่ส่งมามีข้อผิดพลาดร้ายแรง 2 จุดครับ
 
-**Problem:**
+1.  **JSON struct tags ไม่ถูกต้อง:** ตามที่ระบุไว้ในไฟล์ `code_review.md` โค้ดในไฟล์ `internal/models/graph.go`, `internal/models/chart.go`, และ `internal/api/handlers/graph_handler.go` ยังคงมี JSON struct tag ที่ผิดรูปแบบ คือมีการใช้ backslash (`\`) เกินเข้ามา ทำให้ `encoding/json` ไม่สามารถแปลงชื่อฟิลด์ได้อย่างถูกต้อง
 
-The struct tags for JSON serialization are malformed. For example, in `internal/models/graph.go`, the tag is written as `` `json:\"label\"` ``. The Go compiler interprets this as a raw string literal containing the characters `j`, `s`, `o`, `n`, `:`, `\`, `"`, `l`, `a`, `b`, `e`, `l`, `\`, `"`.
+    **ตัวอย่างที่ผิด:**
+    ```go
+    `json:\"label\"`
+    ```
 
-The `encoding/json` package expects the tag format to be `json:"label"`, without the escaped quotes. Because of this error, the JSON marshaler will ignore the tags and use the default behavior, which is to use the struct's field names as-is (e.g., `Label`, `Amount`). This will result in an incorrect API response contract.
+    **ที่ถูกต้องคือ:**
+    ```go
+    `json:"label"`
+    ```
+    ต้องลบ `\` ออกจาก struct tags ทั้งหมดในไฟล์ที่กล่าวมาครับ
 
-**Fix:**
+2.  **การสร้าง SQL Query มีบั๊ก:** ในไฟล์ `internal/repository/transaction_repository.go` ฟังก์ชัน `GetExpenseGraphData` มีการใช้ `fmt.Sprintf` เพื่อสร้าง SQL query อย่างไม่ถูกต้อง โดยตัวแปร `dateFormat` (เช่น `"%Y-%m"`) มีอักขระ `%` ซึ่ง `fmt.Sprintf` จะพยายามตีความเป็น format specifier ทำให้ query ที่ได้ผิดพลาดและโปรแกรมจะทำงานไม่สำเร็จ
 
-Remove the backslashes from all JSON struct tags.
+    **วิธีการแก้ไข** คือเปลี่ยนจากการใช้ `fmt.Sprintf` เป็นการต่อสตริง (string concatenation) แทน เพื่อป้องกันการตีความอักขระ `%` ที่ผิดพลาด
 
-**Example:**
+    **โค้ดที่มีปัญหา:**
+    ```go
+    query := fmt.Sprintf(`
+        SELECT 
+            strftime('%s', date) as period_label, 
+            ...
+    `, dateFormat)
+    ```
 
-In `internal/models/graph.go`:
-
-**Incorrect:**
-```go
-type GraphDataPoint struct {
-	Label  string  `json:\"label\"`
-	Amount float64 `json:\"amount\"`
-}
-```
-
-**Correct:**
-```go
-type GraphDataPoint struct {
-	Label  string  `json:"label"`
-	Amount float64 `json:"amount"`
-}
-```
-
-This correction needs to be applied to the following files:
-*   `internal/models/graph.go`
-*   `internal/models/chart.go`
-*   `internal/api/handlers/graph_handler.go` (for the `GraphResponse` struct)
+    **โค้ดที่แก้ไขแล้ว:**
+    ```go
+    query := `
+        SELECT 
+            strftime('` + dateFormat + `', date) as period_label, 
+            ...
+    `
+    ```
 
 ## 🧪 Test Suggestions
 
-Here are 3 critical, edge-case test cases that should be added or verified for the new `GraphService`:
+สวัสดีครับ เพื่อที่จะเขียน "Manual Verification Guide" ได้ ผมต้องการเห็นรายละเอียดของการเปลี่ยนแปลงโค้ดที่คุณว่าครับ
 
-*   **Test with an invalid `period` parameter:** The service explicitly validates the `period` string. A test should pass an invalid value (e.g., `"daily"`, `"quarterly"`, or an empty string `""`) and assert that the function returns the expected `models.ErrInvalidPeriod` error and a `nil` slice. This directly tests the new validation logic.
-
-*   **Test when the repository finds no matching transactions:** A test should be configured where the repository mock is called with a valid `jarID` and `period` but returns an empty slice (`[]models.GraphDataPoint{}`) and no error. The test should verify that the service correctly returns the empty slice and a `nil` error, rather than panicking or returning a `nil` slice.
-
-*   **Test when the underlying repository returns an error:** The service layer is responsible for handling or propagating errors from the repository. A test should mock the `repo.GetExpenseGraphData` call to return a specific error (e.g., a database connection error). The test must then assert that the `graphService` correctly propagates this exact error back to the caller.
+กรุณาส่งโค้ดที่เปลี่ยนแปลงมาให้ผมดูหน่อยครับ แล้วผมจะเขียนขั้นตอนการตรวจสอบแบบ step-by-step พร้อมผลลัพธ์ที่คาดหวังให้ครับ
 
