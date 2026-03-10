@@ -4,14 +4,28 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
 // InitDB initializes the SQLite database and runs migrations
 func InitDB(dataSourceName string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dataSourceName)
-	if err != nil {
+        // Add query parameter to enable foreign keys if not already there
+        if dataSourceName != ":memory:" && !contains(dataSourceName, "_foreign_keys") {
+            if contains(dataSourceName, "?") {
+                dataSourceName += "&_foreign_keys=on"
+            } else {
+                dataSourceName += "?_foreign_keys=on"
+            }
+        }
+
+        db, err := sql.Open("sqlite3", dataSourceName)
+        if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
