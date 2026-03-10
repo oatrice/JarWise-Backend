@@ -1,0 +1,38 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ "main", "feat/*", "fix/*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Test and Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: true
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Check Formatting
+      run: |
+        if [ -n "$(gofmt -l .)" ]; then
+          echo "Go code is not formatted. Please run 'go fmt ./...'"
+          gofmt -d .
+          exit 1
+        fi
+
+    - name: Run Tests
+      run: go test -v ./...
+
+    - name: Build
+      run: go build -v -o server ./cmd/server/main.go
