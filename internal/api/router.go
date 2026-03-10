@@ -25,8 +25,11 @@ func NewRouter() http.Handler {
 	txRepo := repository.NewSQLiteTransactionRepository(dbConn)
 	txService := service.NewTransactionService(txRepo)
 	txHandler := handlers.NewTransactionHandler(txService)
-	reportService := service.NewReportService(txRepo)
 
+	walletRepo := repository.NewSQLiteWalletRepository(dbConn)
+	walletHandler := handlers.NewWalletHandler(walletRepo)
+
+	reportService := service.NewReportService(txRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
 
 	graphService := service.NewGraphService(txRepo)
@@ -49,12 +52,8 @@ func NewRouter() http.Handler {
 	mux.HandleFunc("/api/v1/graph/expenses", graphHandler.GetExpenseGraphData)
 	mux.HandleFunc("/api/v1/charts", chartHandler.GetChartData)
 
-	// Wallets (Mock for Manual Verification)
-	mux.HandleFunc("/api/wallets", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[{"id":"1","name":"Cash","balance":100.0},{"id":"2","name":"Bank","balance":5000.0}]`))
-	})
+	// Wallets
+	mux.HandleFunc("/api/v1/wallets/", walletHandler.HandleDelete)
 
 	// Health Check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
