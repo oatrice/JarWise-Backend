@@ -22,13 +22,12 @@ func NewRouter() http.Handler {
 	migrationSvc := service.NewMigrationService()
 	migrationHandler := handlers.NewMigrationHandler(migrationSvc)
 
-	txRepo := repository.NewSQLiteTransactionRepository(dbConn)
-	txService := service.NewTransactionService(txRepo)
-	txHandler := handlers.NewTransactionHandler(txService)
-
 	walletRepo := repository.NewSQLiteWalletRepository(dbConn)
 	walletHandler := handlers.NewWalletHandler(walletRepo)
 
+	txRepo := repository.NewSQLiteTransactionRepository(dbConn)
+	txService := service.NewTransactionService(txRepo, walletRepo)
+	txHandler := handlers.NewTransactionHandler(txService)
 	reportService := service.NewReportService(txRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
 
