@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0] - 2026-03-10
+
+### Added
+- **Analytics**: Implemented chart and graph analytics APIs (`/api/v1/charts`, `/api/v1/graph/expense`) with support for advanced filtering and data aggregation by period.
+- **Data Integrity**: Enhanced data integrity by adding foreign key constraints and robust validation rules for imported data.
+- **Sync**: Added validation to check for wallet existence during transaction creation to prevent data conflicts during synchronization.
+
+### Changed
+- **Server**: Changed the default server port from `8080` to `8081` to avoid potential conflicts with other services.
+
 ## [0.3.0] - 2026-02-11
 
 ### Added

@@ -20,7 +20,7 @@ go mod tidy
 ```bash
 go run cmd/server/main.go
 ```
-The server will start on `http://localhost:8080`.
+The server will start on `http://localhost:8081`.
 
 ## 📡 API Endpoints
 
@@ -54,6 +54,16 @@ Generates a transaction report. Can be filtered by a date range.
   - `start_date` (optional): The start date for the report (e.g., `YYYY-MM-DD`).
   - `end_date` (optional): The end date for the report (e.g., `YYYY-MM-DD`).
 
+### Analytics
+
+**GET** `/api/v1/charts`
+
+Returns data for chart analytics, with support for filtering.
+
+**GET** `/api/v1/graphs/expense`
+
+Returns aggregated expense data for graphs, grouped by period.
+
 ## 📂 Project Structure
 
 - `cmd/server`: Application entry point.
@@ -70,3 +80,5 @@ Generates a transaction report. Can be filtered by a date range.
 - **Data Validation**: Automatically detects discrepancies between raw DB data and reported totals.
 - **Domain Mapping**: Transformers to convert external data formats into JarWise's standard Wallet/Transaction models.
 - **Transaction Management**: Core logic for handling transfers between wallets.
+- **Chart Analytics**: API for generating chart data with filtering.
+- **Expense Graphs**: Endpoint for aggregated expense data over time.

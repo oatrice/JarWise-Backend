@@ -16,11 +16,11 @@ type Jar struct { // Category
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	ParentID string `json:"parent_id,omitempty"`
+	WalletID string `json:"wallet_id,omitempty"`
 	Type     string `json:"type"` // "income", "expense"
 	Icon     string `json:"icon"`
 	Color    string `json:"color"`
 }
-
 type Transaction struct {
 	ID          string    `json:"id"`
 	Amount      float64   `json:"amount"`

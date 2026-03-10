@@ -3,39 +3,63 @@ package importer
 import (
 	"fmt"
 	"jarwise-backend/internal/models"
+	"jarwise-backend/internal/validator"
 	"time"
 )
 
 type Importer struct {
-	// Add DB repository here
+	validator *validator.Validator
 }
 
 func NewImporter() *Importer {
-	return &Importer{}
+	return &Importer{
+		validator: validator.NewValidator(),
+	}
 }
 
 // ImportData converts MM data to JarWise domain models and persists them
 func (i *Importer) ImportData(data *models.ParsedData) error {
+	// Validate Integrity
+	validationErrors := i.validator.ValidateIntegrity(data)
+	if len(validationErrors) > 0 {
+		return fmt.Errorf("import aborted due to %d validation errors: %v", len(validationErrors), validationErrors)
+	}
+
+	// Prepare IDs for filtering
+	walletMap := make(map[string]bool)
+	for _, acc := range data.Accounts {
+		walletMap[acc.ID] = true
+	}
+	jarMap := make(map[string]bool)
+	for _, cat := range data.Categories {
+		jarMap[cat.ID] = true
+	}
+
 	wallets := mapWallets(data.Accounts)
 	jars := mapJars(data.Categories)
-	transactions := mapTransactions(data.Transactions)
+
+	// Filter out transactions that would fail FK constraints
+	var validTxDTOs []models.TransactionDTO
+	for _, tx := range data.Transactions {
+		if walletMap[tx.AccountID] && (tx.CategoryID == "" || jarMap[tx.CategoryID]) {
+			validTxDTOs = append(validTxDTOs, tx)
+		}
+	}
+
+	transactions := mapTransactions(validTxDTOs)
 
 	// Mock Persistence
 	fmt.Printf("--- Importing Data to JarWise DB ---\n")
 	fmt.Printf("Saved %d Wallets\n", len(wallets))
 	fmt.Printf("Saved %d Jars (Categories)\n", len(jars))
-	fmt.Printf("Saved %d Transactions\n", len(transactions))
+	fmt.Printf("Saved %d Valid Transactions (Skipped %d invalid)\n", len(transactions), len(data.Transactions)-len(transactions))
 
-	// Print sample for verification
-	if len(transactions) > 0 {
-		t := transactions[0]
-		fmt.Printf("Sample Tx: %s | %s | %.2f | %s\n", t.Date.Format("2006-01-02"), t.Description, t.Amount, t.Type)
+	if len(validationErrors) > 0 {
+		return fmt.Errorf("import completed with %d validation errors: %v", len(validationErrors), validationErrors)
 	}
 
 	return nil
-}
-
-// Mappers
+} // Mappers
 
 func mapWallets(mmAccounts []models.AccountDTO) []models.Wallet {
 	var result []models.Wallet
@@ -83,7 +107,7 @@ func mapTransactions(mmTrans []models.TransactionDTO) []models.Transaction {
 	for _, t := range mmTrans {
 		date, err := time.Parse(layout, t.Date)
 		if err != nil {
-        var errFallback error
+			var errFallback error
 			date, errFallback = time.Parse("2006-01-02", t.Date)
 			if errFallback != nil {
 				fmt.Printf("WARN: Could not parse date string '%s' for transaction ID %s. Skipping.\n", t.Date, t.ID)

@@ -1,51 +1,50 @@
 # Luma Code Review Report
 
-**Date:** 2026-02-11 22:55:09
-**Files Reviewed:** ['internal/service/report_service_test.go', 'internal/parser/testdata/non_existent.mmbak', 'internal/repository/transaction_repository.go', 'internal/parser/mmbak_parser.go', 'code_review.md', 'internal/parser/testdata/corrupt.mmbak', 'internal/api/handlers/report_handler.go', 'internal/api/router.go', 'internal/service/report_service.go', 'internal/parser/testdata/generate_test_files.py', 'internal/models/report.go', 'internal/parser/mmbak_parser_test.go']
+**Date:** 2026-03-10 11:20:04
+**Files Reviewed:** ['internal/models/errors.go', 'code_review.md', 'internal/models/domain.go', 'internal/validator/validator.go', 'internal/repository/wallet_repository_test.go', 'internal/service/graph_service.go', '.gitignore', 'go.mod', 'internal/api/handlers/chart_handler.go', 'internal/api/handlers/graph_handler.go', 'internal/api/router.go', 'internal/models/chart.go', 'internal/importer/migration_integrity_test.go', 'internal/api/handlers/wallet_handler.go', 'internal/service/chart_service.go', 'internal/repository/wallet_repository.go', 'internal/importer/importer.go', 'internal/service/chart_service_test.go', 'internal/db/sqlite.go', 'internal/repository/transaction_repository.go', 'internal/service/transaction_service.go', 'cmd/server/main.go', 'internal/models/graph.go', 'internal/service/sync_conflict_test.go']
 
 ## 📝 Reviewer Feedback
 
-There is a logic error in the `mmbak_parser.go` file.
+สวัสดีครับ โค้ดที่ส่งมามีข้อผิดพลาดร้ายแรง 2 จุดครับ
 
-**File:** `internal/parser/mmbak_parser.go`
+1.  **JSON struct tags ไม่ถูกต้อง:** ตามที่ระบุไว้ในไฟล์ `code_review.md` โค้ดในไฟล์ `internal/models/graph.go`, `internal/models/chart.go`, และ `internal/api/handlers/graph_handler.go` ยังคงมี JSON struct tag ที่ผิดรูปแบบ คือมีการใช้ backslash (`\`) เกินเข้ามา ทำให้ `encoding/json` ไม่สามารถแปลงชื่อฟิลด์ได้อย่างถูกต้อง
 
-**Issue:**
-The SQL query used to fetch transactions from the `INOUTCOME` table is inconsistent with the Go code that processes the transaction types. The query only selects transactions where `DO_TYPE` is '0', '1', or '2', but the `switch` statement that follows has a case to handle `DO_TYPE` '3' (for transfers).
+    **ตัวอย่างที่ผิด:**
+    ```go
+    `json:\"label\"`
+    ```
 
-Because of this discrepancy, any transaction marked as a transfer with `DO_TYPE = '3'` in the source `.mmbak` file will be ignored by the query and never parsed, leading to incomplete data processing.
+    **ที่ถูกต้องคือ:**
+    ```go
+    `json:"label"`
+    ```
+    ต้องลบ `\` ออกจาก struct tags ทั้งหมดในไฟล์ที่กล่าวมาครับ
 
-**Fix:**
-Update the SQL query to include `'3'` in the `WHERE` clause to ensure transfer transactions are selected from the database.
+2.  **การสร้าง SQL Query มีบั๊ก:** ในไฟล์ `internal/repository/transaction_repository.go` ฟังก์ชัน `GetExpenseGraphData` มีการใช้ `fmt.Sprintf` เพื่อสร้าง SQL query อย่างไม่ถูกต้อง โดยตัวแปร `dateFormat` (เช่น `"%Y-%m"`) มีอักขระ `%` ซึ่ง `fmt.Sprintf` จะพยายามตีความเป็น format specifier ทำให้ query ที่ได้ผิดพลาดและโปรแกรมจะทำงานไม่สำเร็จ
 
-**Change this:**
-```go
-// in internal/parser/mmbak_parser.go, line 79
+    **วิธีการแก้ไข** คือเปลี่ยนจากการใช้ `fmt.Sprintf` เป็นการต่อสตริง (string concatenation) แทน เพื่อป้องกันการตีความอักขระ `%` ที่ผิดพลาด
 
-	transRows, err := db.Query(`
-        SELECT uid, ZDATE, ZMONEY, DO_TYPE, ZCONTENT, categoryUid, assetUid 
-        FROM INOUTCOME 
-        WHERE DO_TYPE IN ('0', '1', '2') OR DO_TYPE IS NULL
-    `)
-```
+    **โค้ดที่มีปัญหา:**
+    ```go
+    query := fmt.Sprintf(`
+        SELECT 
+            strftime('%s', date) as period_label, 
+            ...
+    `, dateFormat)
+    ```
 
-**To this:**
-```go
-// in internal/parser/mmbak_parser.go, line 79
-
-	transRows, err := db.Query(`
-        SELECT uid, ZDATE, ZMONEY, DO_TYPE, ZCONTENT, categoryUid, assetUid 
-        FROM INOUTCOME 
-        WHERE DO_TYPE IN ('0', '1', '2', '3') OR DO_TYPE IS NULL
-    `)
-```
+    **โค้ดที่แก้ไขแล้ว:**
+    ```go
+    query := `
+        SELECT 
+            strftime('` + dateFormat + `', date) as period_label, 
+            ...
+    `
+    ```
 
 ## 🧪 Test Suggestions
 
-Here are 3 critical, edge-case test cases that should be added or verified for the `ReportService`:
+สวัสดีครับ เพื่อที่จะเขียน "Manual Verification Guide" ได้ ผมต้องการเห็นรายละเอียดของการเปลี่ยนแปลงโค้ดที่คุณว่าครับ
 
-*   **Test with an invalid date range where the start date is after the end date.** The current tests all use valid date ranges. This edge case checks for proper input validation. The service should gracefully handle this by returning an error, rather than an empty or incorrect report.
-
-*   **Test with filters that result in zero transactions.** This scenario tests the filtering logic when there is no data to return. For example, use a valid date range but filter by a `JarID` and a `WalletID` that never appear together on the same transaction. The expected outcome is a valid, empty report (e.g., `TransactionCount: 0`), not an error.
-
-*   **Test date range boundaries.** Create a test where the `StartDate` and `EndDate` are set to the exact timestamp of a single known transaction. This verifies that the date range filtering is inclusive (`>= start` and `<= end`) and correctly handles transactions that fall precisely on the boundary, which can be a common source of off-by-one errors.
+กรุณาส่งโค้ดที่เปลี่ยนแปลงมาให้ผมดูหน่อยครับ แล้วผมจะเขียนขั้นตอนการตรวจสอบแบบ step-by-step พร้อมผลลัพธ์ที่คาดหวังให้ครับ
 

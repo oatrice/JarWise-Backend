@@ -12,6 +12,36 @@ func NewValidator() *Validator {
 	return &Validator{}
 }
 
+// ValidateIntegrity checks internal consistency of parsed data (e.g. FK references)
+func (v *Validator) ValidateIntegrity(data *models.ParsedData) []string {
+	var errors []string
+
+	walletIDs := make(map[string]bool)
+	for _, acc := range data.Accounts {
+		walletIDs[acc.ID] = true
+	}
+
+	jarIDs := make(map[string]bool)
+	for _, cat := range data.Categories {
+		jarIDs[cat.ID] = true
+	}
+
+	for _, tx := range data.Transactions {
+		if !walletIDs[tx.AccountID] {
+			errors = append(errors, fmt.Sprintf("Tx %s (%.2f) references unknown Account %s", tx.ID, tx.Amount, tx.AccountID))
+		}
+		if tx.CategoryID != "" && !jarIDs[tx.CategoryID] {
+			errors = append(errors, fmt.Sprintf("Tx %s (%.2f) references unknown Category %s", tx.ID, tx.Amount, tx.CategoryID))
+		}
+		// Check transfer target
+		if tx.ToAccountID != "" && !walletIDs[tx.ToAccountID] {
+			errors = append(errors, fmt.Sprintf("Transfer %s (%.2f) references unknown ToAccount %s", tx.ID, tx.Amount, tx.ToAccountID))
+		}
+	}
+
+	return errors
+}
+
 // Validate compares parsed data from both sources
 func (v *Validator) Validate(dbData, xlsData *models.ParsedData) *ValidationResult {
 	result := &ValidationResult{

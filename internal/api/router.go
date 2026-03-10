@@ -22,11 +22,20 @@ func NewRouter() http.Handler {
 	migrationSvc := service.NewMigrationService()
 	migrationHandler := handlers.NewMigrationHandler(migrationSvc)
 
+	walletRepo := repository.NewSQLiteWalletRepository(dbConn)
+	walletHandler := handlers.NewWalletHandler(walletRepo)
+
 	txRepo := repository.NewSQLiteTransactionRepository(dbConn)
-	txService := service.NewTransactionService(txRepo)
+	txService := service.NewTransactionService(txRepo, walletRepo)
 	txHandler := handlers.NewTransactionHandler(txService)
 	reportService := service.NewReportService(txRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
+
+	graphService := service.NewGraphService(txRepo)
+	graphHandler := handlers.NewGraphHandler(graphService)
+
+	chartService := service.NewChartService(txRepo)
+	chartHandler := handlers.NewChartHandler(chartService)
 
 	// Routes
 	mux.HandleFunc("/api/v1/migrations/money-manager", func(w http.ResponseWriter, r *http.Request) {
@@ -39,13 +48,11 @@ func NewRouter() http.Handler {
 
 	mux.HandleFunc("/api/v1/transfers", txHandler.CreateTransfer)
 	mux.HandleFunc("/api/v1/reports", reportHandler.GetReport)
+	mux.HandleFunc("/api/v1/graph/expenses", graphHandler.GetExpenseGraphData)
+	mux.HandleFunc("/api/v1/charts", chartHandler.GetChartData)
 
-	// Wallets (Mock for Manual Verification)
-	mux.HandleFunc("/api/wallets", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[{"id":"1","name":"Cash","balance":100.0},{"id":"2","name":"Bank","balance":5000.0}]`))
-	})
+	// Wallets
+	mux.HandleFunc("/api/v1/wallets/", walletHandler.HandleDelete)
 
 	// Health Check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
