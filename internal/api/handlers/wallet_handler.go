@@ -59,7 +59,7 @@ func (h *WalletHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WalletHandler) List(w http.ResponseWriter, r *http.Request) {
-    // Basic implementation for verification
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(map[string]string{"message": "Wallet list not fully implemented, but repository is working"})
+	// Basic implementation for verification
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Wallet list not fully implemented, but repository is working"})
 }

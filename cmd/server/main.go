@@ -11,11 +11,11 @@ func main() {
 	router := api.NewRouter()
 
 	srv := &http.Server{
-	        Addr:         ":8081",
-	        Handler:      router,
-	        ReadTimeout:  15 * time.Second,
-	        WriteTimeout: 15 * time.Second,
-	        IdleTimeout:  60 * time.Second,
+		Addr:         ":8081",
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	log.Println("Server starting on port 8081...")

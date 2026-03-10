@@ -8,7 +8,7 @@ import (
 func TestImportData_IncompleteData(t *testing.T) {
 	imp := NewImporter()
 
-	// 1. Setup: สร้างข้อมูลที่ "ไม่สมบูรณ์" 
+	// 1. Setup: สร้างข้อมูลที่ "ไม่สมบูรณ์"
 	// มี 1 Transaction แต่อ้างถึง Account ID 'acc-missing' ที่ไม่มีอยู่ในรายชื่อ Accounts
 	incompleteData := &models.ParsedData{
 		Accounts: []models.AccountDTO{
@@ -43,4 +43,3 @@ func TestImportData_IncompleteData(t *testing.T) {
 func contains(s, substr string) bool {
 	return s != "" && (s == substr || (len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr)))
 }
-

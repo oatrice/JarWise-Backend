@@ -98,7 +98,7 @@ func TestDeleteWithReplacement(t *testing.T) {
 
 	// 2. Action: Delete A and replace with B
 	err = repo.DeleteWithReplacement("wallet-a", "wallet-b")
-	
+
 	// 3. Assert
 	if err != nil {
 		t.Fatalf("DeleteWithReplacement failed: %v", err)
@@ -148,7 +148,7 @@ func TestDeleteCascade(t *testing.T) {
 
 	// 2. Action: Delete A with CASCADE option
 	err = repo.DeleteCascade("wallet-a")
-	
+
 	// 3. Assert (Expected to fail in RED phase)
 	if err != nil {
 		t.Fatalf("DeleteCascade failed: %v", err)

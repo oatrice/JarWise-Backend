@@ -15,17 +15,17 @@ func contains(s, substr string) bool {
 
 // InitDB initializes the SQLite database and runs migrations
 func InitDB(dataSourceName string) (*sql.DB, error) {
-        // Add query parameter to enable foreign keys if not already there
-        if dataSourceName != ":memory:" && !contains(dataSourceName, "_foreign_keys") {
-            if contains(dataSourceName, "?") {
-                dataSourceName += "&_foreign_keys=on"
-            } else {
-                dataSourceName += "?_foreign_keys=on"
-            }
-        }
+	// Add query parameter to enable foreign keys if not already there
+	if dataSourceName != ":memory:" && !contains(dataSourceName, "_foreign_keys") {
+		if contains(dataSourceName, "?") {
+			dataSourceName += "&_foreign_keys=on"
+		} else {
+			dataSourceName += "?_foreign_keys=on"
+		}
+	}
 
-        db, err := sql.Open("sqlite3", dataSourceName)
-        if err != nil {
+	db, err := sql.Open("sqlite3", dataSourceName)
+	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
