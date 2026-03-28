@@ -182,6 +182,58 @@ func TestGenerateReport_FilterByJarExcludesEmptyJarID(t *testing.T) {
 	}
 }
 
+func TestGenerateReport_Aggregated(t *testing.T) {
+	transactions := []models.Transaction{
+		{ID: "1", Amount: 100, Type: "income", JarID: "jar-1", Date: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)},
+		{ID: "2", Amount: 50, Type: "expense", JarID: "jar-1", Date: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)},
+		{ID: "3", Amount: 30, Type: "expense", JarID: "jar-2", Date: time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)},
+		{ID: "4", Amount: 200, Type: "income", JarID: "jar-2", Date: time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)},
+	}
+
+	service := NewReportService(&fakeReportRepo{transactions: transactions})
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 2, 23, 59, 59, 0, time.UTC)
+
+	report, err := service.GenerateReport(context.Background(), models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 1. Verify Summary
+	if report.Summary.Income != 300 {
+		t.Errorf("expected income 300, got %f", report.Summary.Income)
+	}
+	if report.Summary.Expense != 80 {
+		t.Errorf("expected expense 80, got %f", report.Summary.Expense)
+	}
+	if report.Summary.Net != 220 {
+		t.Errorf("expected net 220, got %f", report.Summary.Net)
+	}
+
+	// 2. Verify Trend (Daily buckets for 2 days)
+	if len(report.Trend) != 2 {
+		t.Errorf("expected 2 trend points, got %d", len(report.Trend))
+	} else {
+		// Day 1: Income 100, Expense 50
+		if report.Trend[0].Date != "2026-01-01" {
+			t.Errorf("expected label 2026-01-01, got %s", report.Trend[0].Date)
+		}
+		if report.Trend[0].Income != 100 || report.Trend[0].Expense != 50 {
+			t.Errorf("day 1 trend mismatch: income=%f expense=%f", report.Trend[0].Income, report.Trend[0].Expense)
+		}
+	}
+
+	// 3. Verify Breakdowns (ByCategory/Jar)
+	// Jar-1: Income 100, Expense 50
+	// Jar-2: Income 200, Expense 30
+	if len(report.ByCategory) != 2 {
+		t.Errorf("expected 2 category entries, got %d", len(report.ByCategory))
+	}
+}
+
 func seedReportTransactions() []models.Transaction {
 	return []models.Transaction{
 		{
