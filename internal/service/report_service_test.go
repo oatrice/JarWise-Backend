@@ -301,6 +301,51 @@ func TestGenerateReport_JarNamesAndComparison(t *testing.T) {
 	}
 }
 
+func TestGenerateReport_YearlyComparison(t *testing.T) {
+	ctx := context.Background()
+	
+	// Current year (2026)
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	// Previous year (2025) - specifically January to test full year coverage
+	prev := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	
+	transactions := []models.Transaction{
+		{ID: "t1", Amount: 100, Type: "expense", JarID: "jar-1", Date: now},
+		{ID: "t2", Amount: 50, Type: "expense", JarID: "jar-1", Date: prev},
+	}
+
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{}, &fakeWalletRepo{})
+	
+	// Filter for full year 2026
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC)
+
+	report, err := service.GenerateReport(ctx, models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify Comparison Summary
+	if report.Comparison == nil {
+		t.Fatal("expected comparison data")
+	}
+
+	// Current period (2026) should have 100 expense
+	if report.Comparison.Current.Expense != 100 {
+		t.Errorf("expected current expense 100, got %f", report.Comparison.Current.Expense)
+	}
+
+	// Previous period (2025) should have 50 expense
+	// SUCCESS: If logic is duration-based (365 days back from 2026-01-01 -> 2025-01-01)
+	// FAILURE: If logic is just AddDate(0, -1, 0) -> 2025-12-01 to 2025-12-31
+	if report.Comparison.Previous.Expense != 50 {
+		t.Errorf("expected previous year expense 50, got %f. This confirms the logic error in period calculation.", report.Comparison.Previous.Expense)
+	}
+}
+
 func seedReportTransactions() []models.Transaction {
 	return []models.Transaction{
 		{

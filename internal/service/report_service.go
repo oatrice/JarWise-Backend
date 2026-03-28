@@ -62,14 +62,10 @@ func (s *reportService) GenerateReport(ctx context.Context, filter models.Report
 	report := s.aggregate(filtered, filter, jarNameMap)
 
 	// 5. Calculate Comparison and Category comparisons
-	prevStart := filter.StartDate.AddDate(0, -1, 0)
 	duration := filter.EndDate.Sub(filter.StartDate)
-	prevEnd := prevStart.Add(duration)
-
-	// Cap prevEnd to not overlap with the current period
-	if prevEnd.After(filter.StartDate) {
-		prevEnd = filter.StartDate.Add(-time.Nanosecond)
-	}
+	prevStart := filter.StartDate.Add(-duration)
+	// Subtract 1 nanosecond to ensure no overlap if the repository uses inclusive bounds
+	prevEnd := filter.StartDate.Add(-time.Nanosecond)
 
 	prevTransactions, err := s.repo.ListByDateRange(prevStart, prevEnd)
 	if err == nil {
