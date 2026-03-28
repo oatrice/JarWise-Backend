@@ -73,24 +73,42 @@ func main() {
 		}
 	}
 
-	// 4. Seed Transactions (Initial Transactions from feat/48)
+	// 4. Seed Transactions (Initial Transactions from feat/48 + More for better reports)
 	fmt.Println("Seeding transactions...")
 	now := time.Now()
 	initialTransactions := []transaction{
+		// Original Mock Data
 		{ID: "t1", Amount: 12.99, Description: "Spotify Premium", Category: "Play", Date: "Today, 2:30 PM", IsTaxDeductible: false},
 		{ID: "t2", Amount: 86.42, Description: "Whole Foods Market", Category: "Necessities", Date: "Yesterday, 6:15 PM", IsTaxDeductible: true},
 		{ID: "t3", Amount: 6.50, Description: "Starbucks Coffee", Category: "Play", Date: "Yesterday, 8:00 AM", IsTaxDeductible: false},
 		{ID: "t4", Amount: 999.00, Description: "Apple Store", Category: "Necessities", Date: "3 days ago", IsTaxDeductible: true},
+
+		// Additional Expenses
+		{ID: "t5", Amount: 45.00, Description: "Shell Petrol", Category: "Necessities", Date: "2 days ago", IsTaxDeductible: false},
+		{ID: "t6", Amount: 120.00, Description: "Udemy Course", Category: "Education", Date: "4 days ago", IsTaxDeductible: true},
+		{ID: "t7", Amount: 15.00, Description: "Netflix", Category: "Play", Date: "5 days ago", IsTaxDeductible: false},
+		{ID: "t8", Amount: 200.00, Description: "Charity Donation", Category: "Give", Date: "6 days ago", IsTaxDeductible: true},
+		{ID: "t9", Amount: 30.00, Description: "Amazon Kindle Book", Category: "Education", Date: "Today, 10:00 AM", IsTaxDeductible: false},
+
+		// Income (Directly to Wallet for now, or to a Jar if needed)
+		// Note: The script maps Category -> JarID. If JarID is empty, it's just a general transaction.
+		{ID: "inc1", Amount: 5000.00, Description: "Monthly Salary", Category: "Income", Date: "1 day ago", IsTaxDeductible: false},
+		{ID: "inc2", Amount: 200.00, Description: "Freelance Project", Category: "Income", Date: "4 days ago", IsTaxDeductible: false},
 	}
 
 	for _, tx := range initialTransactions {
 		var jarID sql.NullString
-		// Map category to Jar ID
-		for _, j := range initialJars {
-			if j.Name == tx.Category {
-				jarID.String = j.ID
-				jarID.Valid = true
-				break
+		txType := "expense"
+		if tx.Category == "Income" {
+			txType = "income"
+		} else {
+			// Map category to Jar ID
+			for _, j := range initialJars {
+				if j.Name == tx.Category {
+					jarID.String = j.ID
+					jarID.Valid = true
+					break
+				}
 			}
 		}
 
@@ -98,7 +116,7 @@ func main() {
 		txDate := parseDate(tx.Date, now)
 
 		_, err = dbConn.Exec(`INSERT INTO transactions (id, amount, description, date, type, wallet_id, jar_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			tx.ID, tx.Amount, tx.Description, txDate, "expense", walletID, jarID)
+			tx.ID, tx.Amount, tx.Description, txDate, txType, walletID, jarID)
 		if err != nil {
 			log.Fatalf("Failed to insert transaction %s: %v", tx.Description, err)
 		}
@@ -111,6 +129,9 @@ func parseDate(dateStr string, now time.Time) time.Time {
 	if dateStr == "Today, 2:30 PM" {
 		return time.Date(now.Year(), now.Month(), now.Day(), 14, 30, 0, 0, now.Location())
 	}
+	if dateStr == "Today, 10:00 AM" {
+		return time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, now.Location())
+	}
 	if dateStr == "Yesterday, 6:15 PM" {
 		yesterday := now.AddDate(0, 0, -1)
 		return time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 18, 15, 0, 0, now.Location())
@@ -119,8 +140,28 @@ func parseDate(dateStr string, now time.Time) time.Time {
 		yesterday := now.AddDate(0, 0, -1)
 		return time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 8, 0, 0, 0, now.Location())
 	}
+	if dateStr == "1 day ago" {
+		ago := now.AddDate(0, 0, -1)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
+	if dateStr == "2 days ago" {
+		ago := now.AddDate(0, 0, -2)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
 	if dateStr == "3 days ago" {
 		ago := now.AddDate(0, 0, -3)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
+	if dateStr == "4 days ago" {
+		ago := now.AddDate(0, 0, -4)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
+	if dateStr == "5 days ago" {
+		ago := now.AddDate(0, 0, -5)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
+	if dateStr == "6 days ago" {
+		ago := now.AddDate(0, 0, -6)
 		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
 	}
 	return now
