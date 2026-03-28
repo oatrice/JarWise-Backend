@@ -197,9 +197,9 @@ func (r *sqliteTransactionRepository) GetExpenseGraphData(jarID, period string) 
 		return nil, fmt.Errorf("invalid period: %s", period)
 	}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT 
-			strftime('%s', date) as period_label, 
+			strftime('` + dateFormat + `', date) as period_label, 
 			ABS(SUM(amount)) as total_amount
 		FROM transactions 
 		WHERE 
@@ -207,7 +207,7 @@ func (r *sqliteTransactionRepository) GetExpenseGraphData(jarID, period string) 
 			AND type = 'expense'
 		GROUP BY period_label
 		ORDER BY period_label ASC
-	`, dateFormat)
+	`
 
 	rows, err := r.db.Query(query, jarID)
 	if err != nil {
