@@ -81,21 +81,29 @@ func (s *reportService) GenerateReport(ctx context.Context, filter models.Report
 		})
 		prevReport := s.aggregate(prevFiltered, filter, jarNameMap)
 
-		// Merge Previous Expense into Categories
-		catPrevMap := make(map[string]float64)
+		// Merge Previous stats into Categories
+		type prevAmount struct {
+			Income  float64
+			Expense float64
+		}
+		catPrevMap := make(map[string]prevAmount)
 		for _, cat := range prevReport.ByCategory {
-			catPrevMap[cat.ID] = cat.Expense
+			catPrevMap[cat.ID] = prevAmount{Income: cat.Income, Expense: cat.Expense}
 		}
 		for i := range report.ByCategory {
-			report.ByCategory[i].PrevExpense = catPrevMap[report.ByCategory[i].ID]
+			p := catPrevMap[report.ByCategory[i].ID]
+			report.ByCategory[i].PrevIncome = p.Income
+			report.ByCategory[i].PrevExpense = p.Expense
 		}
 
-		jarPrevMap := make(map[string]float64)
+		jarPrevMap := make(map[string]prevAmount)
 		for _, j := range prevReport.ByJar {
-			jarPrevMap[j.ID] = j.Expense
+			jarPrevMap[j.ID] = prevAmount{Income: j.Income, Expense: j.Expense}
 		}
 		for i := range report.ByJar {
-			report.ByJar[i].PrevExpense = jarPrevMap[report.ByJar[i].ID]
+			p := jarPrevMap[report.ByJar[i].ID]
+			report.ByJar[i].PrevIncome = p.Income
+			report.ByJar[i].PrevExpense = p.Expense
 		}
 
 		report.Comparison = &models.ComparisonData{

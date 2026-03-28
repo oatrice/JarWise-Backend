@@ -68,15 +68,42 @@ func main() {
 		// Calculate the target month
 		targetMonth := now.AddDate(0, -m, 0)
 		
-		// Monthly Income
-		incomeID := fmt.Sprintf("inc-%d", m)
-		incomeAmount := 50000.0 + (rand.Float64() * 10000) // 50k - 60k salary
-		_, err = dbConn.Exec(`INSERT INTO transactions (id, amount, description, date, type, wallet_id) VALUES (?, ?, ?, ?, ?, ?)`,
-			incomeID, incomeAmount, "Monthly Salary", targetMonth.Format(time.RFC3339), "income", walletID)
-		if err != nil {
-			log.Fatalf("Failed to insert income for month %d: %v", m, err)
+		// Rich Monthly Income (2-5 sources)
+		numIncomes := 2 + rand.Intn(4)
+		incomeSources := []struct {
+			name string
+			jar  string
+			min  float64
+			max  float64
+		}{
+			{"Main Salary", "1", 45000, 55000},    // Necessities
+			{"Project Fee", "3", 8000, 25000},     // Education
+			{"Consulting", "5", 5000, 15000},      // Freedom
+			{"Dividends", "5", 1000, 4000},        // Freedom
+			{"Freelance Task", "2", 3000, 12000},  // Play
+			{"Gift Received", "6", 500, 3000},     // Give
+			{"Annual Bonus", "4", 10000, 50000},   // Long Term (rare, we'll randomize)
 		}
-		txCount++
+
+		for i := 0; i < numIncomes; i++ {
+			inc := incomeSources[rand.Intn(len(incomeSources))]
+			// Monthly Bonus check (only Dec/Jan)
+			if inc.name == "Annual Bonus" && targetMonth.Month() != time.December && targetMonth.Month() != time.January {
+				continue
+			}
+
+			incomeID := fmt.Sprintf("inc-%d-%d", m, i)
+			amount := inc.min + (rand.Float64() * (inc.max - inc.min))
+			dayOffset := rand.Intn(28)
+			txDate := time.Date(targetMonth.Year(), targetMonth.Month(), dayOffset+1, 10, 0, 0, 0, time.UTC)
+
+			_, err = dbConn.Exec(`INSERT INTO transactions (id, amount, description, date, type, wallet_id, jar_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				incomeID, amount, inc.name, txDate.Format(time.RFC3339), "income", walletID, inc.jar)
+			if err != nil {
+				log.Fatalf("Failed to insert income %s for month %d: %v", inc.name, m, err)
+			}
+			txCount++
+		}
 
 		// Monthly Expenses (15-20 transactions per month)
 		numExpenses := 15 + rand.Intn(10)
