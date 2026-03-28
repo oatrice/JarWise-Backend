@@ -1,0 +1,13 @@
+- [x] **Phase 1: Android Stability (Completed)**
+- [x] **Phase 2: Reports Audit & Stability (Backend & Web)**
+    - [x] **[RED]** Update `report_service_test.go` with failing "Yearly Comparison" test
+    - [x] **[GREEN]** Refactor `report_service.go` comparison logic
+    - [x] **[REFACTOR]** Audit Backend repositories for unclosed rows/resources
+    - [x] **[RED]** Add Vitest test to verify `metrics` memoization in `ReportsPage.tsx` (if possible)
+    - [x] **[GREEN]** Memoize `metrics` in `ReportsPage.tsx` and add UI error handling
+    - [x] **Verify**
+        - [x] Run backend tests: `go test ./internal/service/...`
+        - [x] Manual verification of Web UI responsiveness
+- [ ] **Phase 3: Final Verification**
+    - [ ] Comprehensive system-wide manual check
+    - [ ] Notify task complete
