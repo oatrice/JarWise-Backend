@@ -25,20 +25,24 @@ type TrendPoint struct {
 
 // CategoryAmount ข้อมูลรายจ่ายแยกตาม Category/Jar
 type CategoryAmount struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Amount  float64 `json:"amount"` // Matches Expense for backward compatibility
-	Income  float64 `json:"income"`
-	Expense float64 `json:"expense"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Amount      float64 `json:"amount"` // Matches Expense for backward compatibility
+	Income      float64 `json:"income"`
+	Expense     float64 `json:"expense"`
+	PrevIncome  float64 `json:"prev_income"`
+	PrevExpense float64 `json:"prev_expense"`
 }
 
 // JarAmount ข้อมูลการกระจายตัวตาม Jar
 type JarAmount struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Amount  float64 `json:"amount"` // Matches Expense for backward compatibility
-	Income  float64 `json:"income"`
-	Expense float64 `json:"expense"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Amount      float64 `json:"amount"` // Matches Expense for backward compatibility
+	Income      float64 `json:"income"`
+	Expense     float64 `json:"expense"`
+	PrevIncome  float64 `json:"prev_income"`
+	PrevExpense float64 `json:"prev_expense"`
 }
 
 // ComparisonData ข้อมูลเปรียบเทียบ 2 ช่วงเวลา

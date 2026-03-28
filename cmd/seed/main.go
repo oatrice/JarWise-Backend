@@ -91,9 +91,14 @@ func main() {
 		{ID: "t9", Amount: 30.00, Description: "Amazon Kindle Book", Category: "Education", Date: "Today, 10:00 AM", IsTaxDeductible: false},
 
 		// Income (Directly to Wallet for now, or to a Jar if needed)
-		// Note: The script maps Category -> JarID. If JarID is empty, it's just a general transaction.
 		{ID: "inc1", Amount: 5000.00, Description: "Monthly Salary", Category: "Income", Date: "1 day ago", IsTaxDeductible: false},
 		{ID: "inc2", Amount: 200.00, Description: "Freelance Project", Category: "Income", Date: "4 days ago", IsTaxDeductible: false},
+
+		// Previous Month (February) Data for Comparison
+		{ID: "feb1", Amount: 1500.00, Description: "Rent (Feb)", Category: "Necessities", Date: "30 days ago", IsTaxDeductible: false},
+		{ID: "feb2", Amount: 800.00, Description: "Groceries (Feb)", Category: "Necessities", Date: "35 days ago", IsTaxDeductible: true},
+		{ID: "feb3", Amount: 300.00, Description: "Dinner Out (Feb)", Category: "Play", Date: "40 days ago", IsTaxDeductible: false},
+		{ID: "incFeb", Amount: 5000.00, Description: "Salary (Feb)", Category: "Income", Date: "30 days ago", IsTaxDeductible: false},
 	}
 
 	for _, tx := range initialTransactions {
@@ -162,6 +167,18 @@ func parseDate(dateStr string, now time.Time) time.Time {
 	}
 	if dateStr == "6 days ago" {
 		ago := now.AddDate(0, 0, -6)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
+	if dateStr == "30 days ago" {
+		ago := now.AddDate(0, 0, -30)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
+	if dateStr == "35 days ago" {
+		ago := now.AddDate(0, 0, -35)
+		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
+	}
+	if dateStr == "40 days ago" {
+		ago := now.AddDate(0, 0, -40)
 		return time.Date(ago.Year(), ago.Month(), ago.Day(), 12, 0, 0, 0, now.Location())
 	}
 	return now

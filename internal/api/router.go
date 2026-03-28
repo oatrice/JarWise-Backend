@@ -28,7 +28,8 @@ func NewRouter() http.Handler {
 	txRepo := repository.NewSQLiteTransactionRepository(dbConn)
 	txService := service.NewTransactionService(txRepo, walletRepo)
 	txHandler := handlers.NewTransactionHandler(txService)
-	reportService := service.NewReportService(txRepo)
+	jarRepo := repository.NewSQLiteJarRepository(dbConn)
+	reportService := service.NewReportService(txRepo, jarRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
 
 	graphService := service.NewGraphService(txRepo)

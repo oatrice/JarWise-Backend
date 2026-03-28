@@ -11,41 +11,93 @@ type reportTransactionRepository interface {
 	ListByDateRange(start, end time.Time) ([]models.Transaction, error)
 }
 
+type jarRepository interface {
+	ListAll(ctx context.Context) ([]models.Jar, error)
+}
+
 type ReportService interface {
 	GenerateReport(ctx context.Context, filter models.ReportFilter) (*models.Report, error)
 }
 
 type reportService struct {
-	repo reportTransactionRepository
+	repo    reportTransactionRepository
+	jarRepo jarRepository
 }
 
-func NewReportService(repo reportTransactionRepository) ReportService {
-	return &reportService{repo: repo}
+func NewReportService(repo reportTransactionRepository, jarRepo jarRepository) ReportService {
+	return &reportService{repo: repo, jarRepo: jarRepo}
 }
 
 func (s *reportService) GenerateReport(ctx context.Context, filter models.ReportFilter) (*models.Report, error) {
-	// 1. Fetch transactions for the requested period
+	// 1. Fetch jars for name mapping
+	jars, err := s.jarRepo.ListAll(ctx)
+	if err != nil {
+		// Log error but continue with IDs if jars can't be fetched
+		jars = []models.Jar{}
+	}
+	jarNameMap := make(map[string]string)
+	for _, j := range jars {
+		jarNameMap[j.ID] = j.Name
+	}
+
+	// 2. Fetch transactions for the requested period
 	transactions, err := s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Apply filters (Jar/Wallet)
+	// 3. Apply filters (Jar/Wallet)
 	filtered := applyReportFilters(transactions, filter)
 
-	// 3. Aggregate Current Period
-	report := s.aggregate(filtered, filter)
+	// 4. Aggregate Current Period
+	report := s.aggregate(filtered, filter, jarNameMap)
 
-	// 4. Calculate Comparison (Previous Period)
-	comparison, err := s.buildComparison(ctx, filter, report.Summary)
-	if err != nil {
-		// Log error but don't fail the whole report if comparison fails
-		report.Comparison = &models.ComparisonData{Current: report.Summary}
-	} else {
-		report.Comparison = comparison
+	// 5. Calculate Comparison and Category comparisons
+	prevStart := filter.StartDate.AddDate(0, -1, 0)
+	duration := filter.EndDate.Sub(filter.StartDate)
+	prevEnd := prevStart.Add(duration)
+
+	// Cap prevEnd to not overlap with the current period
+	if prevEnd.After(filter.StartDate) {
+		prevEnd = filter.StartDate.Add(-time.Nanosecond)
 	}
 
-	// 5. Populate legacy fields for compatibility
+	prevTransactions, err := s.repo.ListByDateRange(prevStart, prevEnd)
+	if err == nil {
+		prevFiltered := applyReportFilters(prevTransactions, models.ReportFilter{
+			StartDate: prevStart,
+			EndDate:   prevEnd,
+			JarIDs:    filter.JarIDs,
+			WalletIDs: filter.WalletIDs,
+		})
+		prevReport := s.aggregate(prevFiltered, filter, jarNameMap)
+
+		// Merge Previous Expense into Categories
+		catPrevMap := make(map[string]float64)
+		for _, cat := range prevReport.ByCategory {
+			catPrevMap[cat.ID] = cat.Expense
+		}
+		for i := range report.ByCategory {
+			report.ByCategory[i].PrevExpense = catPrevMap[report.ByCategory[i].ID]
+		}
+
+		jarPrevMap := make(map[string]float64)
+		for _, j := range prevReport.ByJar {
+			jarPrevMap[j.ID] = j.Expense
+		}
+		for i := range report.ByJar {
+			report.ByJar[i].PrevExpense = jarPrevMap[report.ByJar[i].ID]
+		}
+
+		report.Comparison = &models.ComparisonData{
+			Current:  report.Summary,
+			Previous: prevReport.Summary,
+		}
+	} else {
+		report.Comparison = &models.ComparisonData{Current: report.Summary}
+	}
+
+	// 6. Populate legacy fields
 	report.FilterUsed = filter
 	report.Transactions = filtered
 	report.TransactionCount = len(filtered)
@@ -54,7 +106,7 @@ func (s *reportService) GenerateReport(ctx context.Context, filter models.Report
 	return report, nil
 }
 
-func (s *reportService) aggregate(transactions []models.Transaction, filter models.ReportFilter) *models.Report {
+func (s *reportService) aggregate(transactions []models.Transaction, filter models.ReportFilter, jarNames map[string]string) *models.Report {
 	var summary models.ChartSummary
 	trendMap := make(map[string]*models.TrendPoint)
 	categoryMap := make(map[string]*models.CategoryAmount)
@@ -90,8 +142,11 @@ func (s *reportService) aggregate(transactions []models.Transaction, filter mode
 		// Update Category Breakdown (Both Income & Expense)
 		if tx.JarID != "" {
 			if _, ok := categoryMap[tx.JarID]; !ok {
-				// We use JarID as Name for now, in a real DB we'd fetch the Name
-				categoryMap[tx.JarID] = &models.CategoryAmount{ID: tx.JarID, Name: tx.JarID}
+				name := tx.JarID
+				if n, exists := jarNames[tx.JarID]; exists {
+					name = n
+				}
+				categoryMap[tx.JarID] = &models.CategoryAmount{ID: tx.JarID, Name: name}
 			}
 			if tx.Type == "income" {
 				categoryMap[tx.JarID].Income += tx.Amount
@@ -101,10 +156,14 @@ func (s *reportService) aggregate(transactions []models.Transaction, filter mode
 			}
 		}
 
-		// Update Jar Breakdown (Simplified version of Category for this domain)
+		// Update Jar Breakdown
 		if tx.JarID != "" {
 			if _, ok := jarMap[tx.JarID]; !ok {
-				jarMap[tx.JarID] = &models.JarAmount{ID: tx.JarID, Name: tx.JarID}
+				name := tx.JarID
+				if n, exists := jarNames[tx.JarID]; exists {
+					name = n
+				}
+				jarMap[tx.JarID] = &models.JarAmount{ID: tx.JarID, Name: name}
 			}
 			if tx.Type == "income" {
 				jarMap[tx.JarID].Income += tx.Amount
@@ -124,42 +183,6 @@ func (s *reportService) aggregate(transactions []models.Transaction, filter mode
 	}
 }
 
-func (s *reportService) buildComparison(ctx context.Context, filter models.ReportFilter, currentSummary models.ChartSummary) (*models.ComparisonData, error) {
-	duration := filter.EndDate.Sub(filter.StartDate)
-	prevStart := filter.StartDate.Add(-duration - time.Nanosecond)
-	prevEnd := filter.StartDate.Add(-time.Nanosecond)
-
-	prevTransactions, err := s.repo.ListByDateRange(prevStart, prevEnd)
-	if err != nil {
-		return nil, err
-	}
-
-	prevFiltered := applyReportFilters(prevTransactions, models.ReportFilter{
-		StartDate: prevStart,
-		EndDate:   prevEnd,
-		JarIDs:    filter.JarIDs,
-		WalletIDs: filter.WalletIDs,
-	})
-
-	var prevIncome, prevExpense float64
-	for _, tx := range prevFiltered {
-		switch tx.Type {
-		case "income":
-			prevIncome += tx.Amount
-		case "expense":
-			prevExpense += tx.Amount
-		}
-	}
-
-	return &models.ComparisonData{
-		Current: currentSummary,
-		Previous: models.ChartSummary{
-			Income:  prevIncome,
-			Expense: prevExpense,
-			Net:     prevIncome - prevExpense,
-		},
-	}, nil
-}
 
 // Helpers for sorting
 
