@@ -42,3 +42,4 @@ vendor/
 .DS_Store
 server_bin
 *.db
+test_output.txt

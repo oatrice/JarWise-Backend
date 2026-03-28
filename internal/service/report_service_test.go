@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"jarwise-backend/internal/models"
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,8 +30,16 @@ func (f *fakeJarRepo) ListAll(ctx context.Context) ([]models.Jar, error) {
 	return f.jars, nil
 }
 
+type fakeWalletRepo struct {
+	wallets []models.Wallet
+}
+
+func (f *fakeWalletRepo) ListAll() ([]models.Wallet, error) {
+	return f.wallets, nil
+}
+
 func TestGenerateReport_NoFilters(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -48,7 +57,7 @@ func TestGenerateReport_NoFilters(t *testing.T) {
 }
 
 func TestGenerateReport_FilterByJar(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -72,7 +81,7 @@ func TestGenerateReport_FilterByJar(t *testing.T) {
 }
 
 func TestGenerateReport_FilterByWallet(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -96,7 +105,7 @@ func TestGenerateReport_FilterByWallet(t *testing.T) {
 }
 
 func TestGenerateReport_FilterByJarAndWallet(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -119,7 +128,7 @@ func TestGenerateReport_FilterByJarAndWallet(t *testing.T) {
 }
 
 func TestGenerateReport_NoResults(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -169,7 +178,7 @@ func TestGenerateReport_FilterByJarExcludesEmptyJarID(t *testing.T) {
 		},
 	}
 
-	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{})
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -198,7 +207,7 @@ func TestGenerateReport_Aggregated(t *testing.T) {
 		{ID: "4", Amount: 200, Type: "income", JarID: "jar-2", Date: time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)},
 	}
 
-	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{})
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 2, 23, 59, 59, 0, time.UTC)
 
@@ -257,7 +266,7 @@ func TestGenerateReport_JarNamesAndComparison(t *testing.T) {
 		{ID: "t2", Amount: 80, Type: "expense", JarID: "jar-1", Date: now.AddDate(0, -1, 0)},
 	}
 
-	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{jars: jars})
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{jars: jars}, &fakeWalletRepo{})
 	
 	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 3, 31, 23, 59, 59, 0, time.UTC)
@@ -295,36 +304,85 @@ func TestGenerateReport_JarNamesAndComparison(t *testing.T) {
 func seedReportTransactions() []models.Transaction {
 	return []models.Transaction{
 		{
-			ID:       "tx-1",
-			Amount:   120.0,
-			Date:     time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC),
-			Type:     "expense",
-			JarID:    "jar-1",
-			WalletID: "wallet-1",
+			ID:          "tx-1",
+			Amount:      120.0,
+			Date:        time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC),
+			Type:        "expense",
+			JarID:       "jar-1",
+			WalletID:    "wallet-1",
+			Description: "Lunch",
 		},
 		{
-			ID:       "tx-2",
-			Amount:   80.0,
-			Date:     time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC),
-			Type:     "expense",
-			JarID:    "jar-2",
-			WalletID: "wallet-2",
+			ID:          "tx-2",
+			Amount:      80.0,
+			Date:        time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC),
+			Type:        "expense",
+			JarID:       "jar-2",
+			WalletID:    "wallet-2",
+			Description: "Bus",
 		},
 		{
-			ID:       "tx-3",
-			Amount:   42.5,
-			Date:     time.Date(2026, 1, 8, 12, 0, 0, 0, time.UTC),
-			Type:     "income",
-			JarID:    "jar-1",
-			WalletID: "wallet-2",
+			ID:          "tx-3",
+			Amount:      42.5,
+			Date:        time.Date(2026, 1, 8, 12, 0, 0, 0, time.UTC),
+			Type:        "income",
+			JarID:       "jar-1",
+			WalletID:    "wallet-2",
+			Description: "Refund",
 		},
 		{
-			ID:       "tx-4",
-			Amount:   200.0,
-			Date:     time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC),
-			Type:     "expense",
-			JarID:    "jar-3",
-			WalletID: "wallet-3",
+			ID:          "tx-4",
+			Amount:      200.0,
+			Date:        time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC),
+			Type:        "expense",
+			JarID:       "jar-3",
+			WalletID:    "wallet-3",
+			Description: "Electricity",
 		},
+	}
+}
+
+func TestExportTransactionsToCSV(t *testing.T) {
+	jars := []models.Jar{
+		{ID: "jar-1", Name: "Food"},
+		{ID: "jar-2", Name: "Transport"},
+	}
+	wallets := []models.Wallet{
+		{ID: "wallet-1", Name: "Cash"},
+		{ID: "wallet-2", Name: "Bank"},
+	}
+
+	service := NewReportService(
+		&fakeReportRepo{transactions: seedReportTransactions()},
+		&fakeJarRepo{jars: jars},
+		&fakeWalletRepo{wallets: wallets},
+	)
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
+
+	csvData, err := service.ExportTransactionsToCSV(context.Background(), models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(csvData) == 0 {
+		t.Fatal("expected non-empty CSV data")
+	}
+
+	content := string(csvData)
+	// Check header
+	expectedHeader := "Date,Description,Amount,Type,Wallet,Jar"
+	if !strings.Contains(content, expectedHeader) {
+		t.Errorf("expected header '%s' not found", expectedHeader)
+	}
+
+	// Check sample row (tx-1: 2026-01-02, Lunch, 120.00, expense, Cash, Food)
+	expectedRow := "2026-01-02,Lunch,120.00,expense,Cash,Food"
+	if !strings.Contains(content, expectedRow) {
+		t.Errorf("expected row '%s' not found", expectedRow)
 	}
 }

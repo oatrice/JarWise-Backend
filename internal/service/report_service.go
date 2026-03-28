@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
+	"fmt"
 	"jarwise-backend/internal/models"
 	"sort"
 	"time"
@@ -15,17 +18,23 @@ type jarRepository interface {
 	ListAll(ctx context.Context) ([]models.Jar, error)
 }
 
+type walletRepository interface {
+	ListAll() ([]models.Wallet, error)
+}
+
 type ReportService interface {
 	GenerateReport(ctx context.Context, filter models.ReportFilter) (*models.Report, error)
+	ExportTransactionsToCSV(ctx context.Context, filter models.ReportFilter) ([]byte, error)
 }
 
 type reportService struct {
-	repo    reportTransactionRepository
-	jarRepo jarRepository
+	repo       reportTransactionRepository
+	jarRepo    jarRepository
+	walletRepo walletRepository
 }
 
-func NewReportService(repo reportTransactionRepository, jarRepo jarRepository) ReportService {
-	return &reportService{repo: repo, jarRepo: jarRepo}
+func NewReportService(repo reportTransactionRepository, jarRepo jarRepository, walletRepo walletRepository) ReportService {
+	return &reportService{repo: repo, jarRepo: jarRepo, walletRepo: walletRepo}
 }
 
 func (s *reportService) GenerateReport(ctx context.Context, filter models.ReportFilter) (*models.Report, error) {
@@ -104,6 +113,66 @@ func (s *reportService) GenerateReport(ctx context.Context, filter models.Report
 	report.TotalAmount = report.Summary.Net
 
 	return report, nil
+}
+
+func (s *reportService) ExportTransactionsToCSV(ctx context.Context, filter models.ReportFilter) ([]byte, error) {
+	// 1. Fetch dependencies for name mapping
+	jars, _ := s.jarRepo.ListAll(ctx)
+	jarMap := make(map[string]string)
+	for _, j := range jars {
+		jarMap[j.ID] = j.Name
+	}
+
+	wallets, _ := s.walletRepo.ListAll()
+	walletMap := make(map[string]string)
+	for _, w := range wallets {
+		walletMap[w.ID] = w.Name
+	}
+
+	// 2. Fetch transactions
+	transactions, err := s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Apply filters
+	filtered := applyReportFilters(transactions, filter)
+
+	// 4. Generate CSV
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+
+	// Header
+	if err := writer.Write([]string{"Date", "Description", "Amount", "Type", "Wallet", "Jar"}); err != nil {
+		return nil, fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	for _, tx := range filtered {
+		jarName := tx.JarID
+		if name, ok := jarMap[tx.JarID]; ok {
+			jarName = name
+		}
+
+		walletName := tx.WalletID
+		if name, ok := walletMap[tx.WalletID]; ok {
+			walletName = name
+		}
+
+		row := []string{
+			tx.Date.Format("2006-01-02"),
+			tx.Description,
+			fmt.Sprintf("%.2f", tx.Amount),
+			tx.Type,
+			walletName,
+			jarName,
+		}
+		if err := writer.Write(row); err != nil {
+			return nil, fmt.Errorf("failed to write CSV row: %w", err)
+		}
+	}
+
+	writer.Flush()
+	return buf.Bytes(), writer.Error()
 }
 
 func (s *reportService) aggregate(transactions []models.Transaction, filter models.ReportFilter, jarNames map[string]string) *models.Report {

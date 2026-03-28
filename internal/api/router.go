@@ -29,7 +29,7 @@ func NewRouter() http.Handler {
 	txService := service.NewTransactionService(txRepo, walletRepo)
 	txHandler := handlers.NewTransactionHandler(txService)
 	jarRepo := repository.NewSQLiteJarRepository(dbConn)
-	reportService := service.NewReportService(txRepo, jarRepo)
+	reportService := service.NewReportService(txRepo, jarRepo, walletRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
 
 	graphService := service.NewGraphService(txRepo)
@@ -49,6 +49,7 @@ func NewRouter() http.Handler {
 
 	mux.HandleFunc("/api/v1/transfers", txHandler.CreateTransfer)
 	mux.HandleFunc("/api/v1/reports", reportHandler.GetReport)
+	mux.HandleFunc("/api/v1/reports/export", reportHandler.ExportReport)
 	mux.HandleFunc("/api/v1/graph/expenses", graphHandler.GetExpenseGraphData)
 	mux.HandleFunc("/api/v1/charts", chartHandler.GetChartData)
 
