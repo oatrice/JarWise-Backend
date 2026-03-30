@@ -19,7 +19,7 @@ func NewRouter() http.Handler {
 	}
 
 	// Dependencies
-	migrationSvc := service.NewMigrationService()
+	migrationSvc := service.NewMigrationService(dbConn)
 	migrationHandler := handlers.NewMigrationHandler(migrationSvc)
 
 	walletRepo := repository.NewSQLiteWalletRepository(dbConn)
