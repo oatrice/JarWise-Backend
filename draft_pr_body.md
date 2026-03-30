@@ -1,54 +1,40 @@
 # 📋 Backend Update Summary
-This PR introduces comprehensive financial reporting capabilities to the backend, including aggregated reports with comparisons and a CSV data export feature. It also enhances data seeding for more robust testing of these new reporting features.
+This PR introduces comprehensive financial reporting capabilities for both Web and Android platforms. It includes new API endpoints for generating detailed financial reports with jar data and comparison, as well as functionality to export transaction data to CSV.
 
 ## ✅ Checklist
-- [x] 🏗️ I have moved the related issue to "In Progress" on the Kanban board
+- [ ] 🏗️ I have moved the related issue to "In Progress" on the Kanban board
 - [x] 🧪 Tests added/updated and verified locally
-- [x] 🔄 All CI checks passed
+- [ ] 🔄 All CI checks passed
 
 ## 🎯 Type
 - [x] ✨ New Feature
+- [ ] 🐛 Bug Fix
+- [ ] 🛠️ Refactoring
+- [ ] 📄 Documentation
+- [ ] 🔄 CI/Workflow update
+- [ ] 💥 Breaking change
 
 ## 📝 Detailed Changes
-This release delivers the backend foundation for financial reports and data export, addressing Issue #59.
+This PR addresses Issue #59 by implementing robust financial reporting and data export features. Key changes include:
 
-Key changes include:
-*   **Report Generation:**
-    *   Implemented `internal/service/report_service.go` to handle complex financial report generation, including monthly/yearly comparisons and aggregation by jars and wallets.
-    *   The report service now leverages `jar_repository` and `wallet_repository` for comprehensive data inclusion.
-    *   Introduced new report models (`internal/models/report.go`, `internal/models/chart.go`) to structure report data.
-*   **Data Export (CSV):**
-    *   Added `ExportTransactionsToCSV` function within `report_service` to generate CSV exports of transactions based on filter criteria.
-    *   A new endpoint `/api/v1/reports/export` is available for downloading these CSV files.
-*   **API Endpoints:**
-    *   `/api/v1/reports` endpoint updated and enhanced for fetching financial reports.
-    *   New `/api/v1/reports/export` endpoint for CSV export.
-    *   Improved date parameter parsing in `report_handler` to support `RFC3339` and `YYYY-MM-DD` formats, with better handling for `end_date` and `start_date` validation.
-*   **CORS Middleware:**
-    *   Implemented a generic CORS middleware (`CORSMiddleware`) in `internal/api/router.go` to allow frontend applications (e.g., `http://localhost:5173`) to access the API.
-*   **Data Seeding Enhancements:**
-    *   Introduced `cmd/seed-10-years/main.go` to generate a decade's worth of realistic transaction data, enabling thorough testing of historical reports.
-    *   `cmd/seed/main.go` has been expanded to include more varied transaction data, improving the quality of default reports.
-*   **Testing:**
-    *   Comprehensive unit tests for `report_service.go` covering report generation logic, comparison calculations, and CSV export functionality.
-    *   New test cases for `report_handler.go` and `cors_test.go` to ensure API endpoints and CORS functionality work as expected.
-*   **Refactoring:**
-    *   Updated repository interfaces and implementations to support the new reporting requirements.
+*   **Financial Reports API**: New `/api/v1/reports` endpoint to generate financial reports with flexible filtering options (start/end dates, jar IDs, wallet IDs). The reports now include detailed breakdowns and comparisons, leveraging an enhanced `ReportService`.
+*   **CSV Data Export**: A new `/api/v1/reports/export` endpoint allows users to download transaction data in CSV format, based on the same filtering criteria as the reports.
+*   **Database Seeding**: Added new seed scripts (`cmd/seed-10-years/main.go` and `cmd/seed/main.go`) to populate the database with realistic, extended transaction data over 10 years, facilitating better report generation and testing.
+*   **CORS Middleware**: Implemented CORS middleware to enable secure communication between the frontend applications (Web and Android) and the backend API.
+*   **Service Layer Enhancements**: The `ReportService` has been significantly updated to handle report generation logic, including period comparisons and data aggregation. It now utilizes `JarRepository` and `WalletRepository` for richer data context.
+*   **New Repositories**: Introduced `jar_repository.go` and `wallet_repository.go` for dedicated data access related to jars and wallets, improving modularity and maintainability.
+*   **Unit Tests**: Added comprehensive unit tests for `ReportHandler` and `ReportService` to ensure the correct functioning of report generation and export features.
 
 ## 🧪 Testing Results
-*   Manually verified `/api/v1/reports` endpoint functionality using various date and ID filters.
-*   Confirmed CSV export functionality via `/api/v1/reports/export`, downloading and inspecting the generated CSV files.
-*   All existing unit tests and newly added report-related tests pass successfully.
-*   CORS headers are correctly set, allowing access from specified origins during development.
+Unit tests for `ReportHandler` and `ReportService` have been added and pass successfully, validating the report generation and CSV export functionalities. The new seeding scripts have been used locally to populate the database and verify the reports with substantial data.
 
 ## 🚀 Migration/Database Changes
 - [ ] Database schema updated
 - [ ] Environment variables updated
 
-No database schema changes are required for this update. New seed commands (`cmd/seed-10-years/main.go` and enhancements to `cmd/seed/main.go`) are available for populating the database with test data.
-
 ```sql
--- SQL Migration if applicable
+-- No direct SQL migration scripts are part of this PR.
+-- New data seeding scripts have been added for development/testing purposes.
 ```
 
 ## 🔗 Related Issues

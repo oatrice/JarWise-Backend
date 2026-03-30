@@ -12,6 +12,7 @@ ISSUE: {
 
 GIT CONTEXT:
 COMMITS:
+01b2238 feat: [Web | Android] Financial Reports & Data Export...
 3f6f8ab feat: [Web | Android] Financial Reports & Data Export...
 ec6428b docs: sync AI brain artifacts
 8cd3627 ✨ feat(release): Upgrade to version 0.5.0
@@ -35,7 +36,8 @@ STATS:
  .../59_issue-59/ai_brain/implementation_plan.md    |   51 +
  docs/features/59_issue-59/ai_brain/task.md         |   13 +
  docs/features/59_issue-59/ai_brain/walkthrough.md  |   42 +
- draft_pr_prompt.md                                 | 1121 ++++++++++----------
+ draft_pr_body.md                                   |  123 +--
+ draft_pr_prompt.md                                 | 1123 ++++++++++----------
  internal/api/cors_test.go                          |   25 +
  internal/api/handlers/report_handler.go            |   74 +-
  internal/api/handlers/report_handler_test.go       |   46 +
@@ -47,7 +49,7 @@ STATS:
  internal/repository/wallet_repository.go           |   19 +
  internal/service/report_service.go                 |  267 ++++-
  internal/service/report_service_test.go            |  273 ++++-
- 20 files changed, 1731 insertions(+), 643 deletions(-)
+ 21 files changed, 1791 insertions(+), 708 deletions(-)
 
 KEY FILE DIFFS:
 diff --git a/cmd/seed-10-years/main.go b/cmd/seed-10-years/main.go
