@@ -12,6 +12,11 @@ import (
 	"strings"
 )
 
+var allowedOriginSet = map[string]struct{}{
+	"http://localhost:5173": {},
+	"http://127.0.0.1:5173": {},
+}
+
 type RouterOptions struct {
 	DB             *sql.DB
 	GoogleClientID string
@@ -99,7 +104,7 @@ func NewRouterWithOptions(options RouterOptions) http.Handler {
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "http://localhost:5173" {
+		if _, ok := isAllowedOrigin(origin); ok {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		} else {
 			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
@@ -115,4 +120,9 @@ func CORSMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isAllowedOrigin(origin string) (struct{}, bool) {
+	value, ok := allowedOriginSet[origin]
+	return value, ok
 }

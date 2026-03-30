@@ -61,49 +61,49 @@ type googleJWTPayload struct {
 func (v *HTTPGoogleVerifier) VerifyIDToken(ctx context.Context, idToken, audience string) (*GoogleIdentity, error) {
 	parts := strings.Split(idToken, ".")
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid google token format")
+		return nil, fmt.Errorf("%w: invalid google token format", ErrUnauthorized)
 	}
 
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid token header: %w", err)
+		return nil, fmt.Errorf("%w: invalid token header", ErrUnauthorized)
 	}
 
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("invalid token payload: %w", err)
+		return nil, fmt.Errorf("%w: invalid token payload", ErrUnauthorized)
 	}
 
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
-		return nil, fmt.Errorf("invalid token signature: %w", err)
+		return nil, fmt.Errorf("%w: invalid token signature", ErrUnauthorized)
 	}
 
 	var header googleJWTHeader
 	if err := json.Unmarshal(headerBytes, &header); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: invalid token header", ErrUnauthorized)
 	}
 
 	if header.Alg != "RS256" || header.Kid == "" {
-		return nil, fmt.Errorf("unsupported google token header")
+		return nil, fmt.Errorf("%w: unsupported google token header", ErrUnauthorized)
 	}
 
 	var payload googleJWTPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: invalid token payload", ErrUnauthorized)
 	}
 
 	if audience != "" && payload.Audience != audience {
-		return nil, fmt.Errorf("unexpected google token audience")
+		return nil, fmt.Errorf("%w: unexpected google token audience", ErrUnauthorized)
 	}
 	if payload.Issuer != "accounts.google.com" && payload.Issuer != "https://accounts.google.com" {
-		return nil, fmt.Errorf("unexpected google token issuer")
+		return nil, fmt.Errorf("%w: unexpected google token issuer", ErrUnauthorized)
 	}
 	if payload.Subject == "" {
-		return nil, fmt.Errorf("google token subject is missing")
+		return nil, fmt.Errorf("%w: google token subject is missing", ErrUnauthorized)
 	}
 	if payload.ExpiresAt <= v.now().Unix() {
-		return nil, fmt.Errorf("google token is expired")
+		return nil, fmt.Errorf("%w: google token is expired", ErrUnauthorized)
 	}
 
 	publicKey, err := v.lookupKey(ctx, header.Kid)
@@ -114,7 +114,7 @@ func (v *HTTPGoogleVerifier) VerifyIDToken(ctx context.Context, idToken, audienc
 	signed := []byte(parts[0] + "." + parts[1])
 	hashed := sha256.Sum256(signed)
 	if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hashed[:], signature); err != nil {
-		return nil, fmt.Errorf("invalid google token signature: %w", err)
+		return nil, fmt.Errorf("%w: invalid google token signature", ErrUnauthorized)
 	}
 
 	return &GoogleIdentity{
@@ -141,7 +141,7 @@ func (v *HTTPGoogleVerifier) lookupKey(ctx context.Context, kid string) (*rsa.Pu
 	defer v.mu.RUnlock()
 	key, ok := v.keys[kid]
 	if !ok {
-		return nil, fmt.Errorf("google signing key not found")
+		return nil, fmt.Errorf("%w: google signing key not found", ErrUnauthorized)
 	}
 	return key, nil
 }
@@ -149,34 +149,34 @@ func (v *HTTPGoogleVerifier) lookupKey(ctx context.Context, kid string) (*rsa.Pu
 func (v *HTTPGoogleVerifier) refreshKeys(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleCertsURL, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: failed to build cert request", ErrProviderUnavailable)
 	}
 
 	resp, err := v.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: failed to fetch google certs", ErrProviderUnavailable)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch google certs: %s", resp.Status)
+		return fmt.Errorf("%w: failed to fetch google certs: %s", ErrProviderUnavailable, resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: failed to read google certs", ErrProviderUnavailable)
 	}
 
 	var certMap map[string]string
 	if err := json.Unmarshal(body, &certMap); err != nil {
-		return err
+		return fmt.Errorf("%w: failed to decode google certs", ErrProviderUnavailable)
 	}
 
 	keys := make(map[string]*rsa.PublicKey, len(certMap))
 	for kid, pemValue := range certMap {
 		key, err := parseGooglePublicKey(pemValue)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: failed to parse google cert %s", ErrProviderUnavailable, kid)
 		}
 		keys[kid] = key
 	}

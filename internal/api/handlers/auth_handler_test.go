@@ -120,3 +120,49 @@ func TestAuthHandler_InvalidGoogleTokenReturnsUnauthorized(t *testing.T) {
 		t.Fatalf("expected sign-in status 401, got %d", signInRecorder.Code)
 	}
 }
+
+func TestAuthHandler_GoogleProviderUnavailableReturnsServiceUnavailable(t *testing.T) {
+	dbConn, err := db.InitDB(":memory:")
+	if err != nil {
+		t.Fatalf("failed to init database: %v", err)
+	}
+
+	authService := auth.NewService(dbConn, &stubGoogleVerifier{
+		err: auth.ErrProviderUnavailable,
+	}, "test-client-id", false)
+	handler := NewAuthHandler(authService)
+
+	signInBody, _ := json.Marshal(models.GoogleAuthRequest{IDToken: "provider-down"})
+	signInReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/google", bytes.NewReader(signInBody))
+	signInRecorder := httptest.NewRecorder()
+	handler.SignInWithGoogle(signInRecorder, signInReq)
+
+	if signInRecorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected sign-in status 503, got %d", signInRecorder.Code)
+	}
+}
+
+func TestAuthHandler_GoogleAuthMisconfiguredReturnsInternalServerError(t *testing.T) {
+	dbConn, err := db.InitDB(":memory:")
+	if err != nil {
+		t.Fatalf("failed to init database: %v", err)
+	}
+
+	authService := auth.NewService(dbConn, &stubGoogleVerifier{
+		identity: &auth.GoogleIdentity{
+			Subject: "google-sub-123",
+			Email:   "anna@example.com",
+			Name:    "Anna",
+		},
+	}, "", false)
+	handler := NewAuthHandler(authService)
+
+	signInBody, _ := json.Marshal(models.GoogleAuthRequest{IDToken: "valid-token"})
+	signInReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/google", bytes.NewReader(signInBody))
+	signInRecorder := httptest.NewRecorder()
+	handler.SignInWithGoogle(signInRecorder, signInReq)
+
+	if signInRecorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected sign-in status 500, got %d", signInRecorder.Code)
+	}
+}

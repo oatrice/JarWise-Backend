@@ -5,6 +5,7 @@ import (
 	"errors"
 	"jarwise-backend/internal/auth"
 	"jarwise-backend/internal/models"
+	"log"
 	"net/http"
 )
 
@@ -38,6 +39,17 @@ func (h *AuthHandler) SignInWithGoogle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid Google ID token", http.StatusUnauthorized)
 			return
 		}
+		if errors.Is(err, auth.ErrProviderUnavailable) {
+			log.Printf("google auth provider unavailable: %v", err)
+			http.Error(w, "Google authentication is temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if errors.Is(err, auth.ErrMisconfigured) {
+			log.Printf("google auth misconfigured: %v", err)
+			http.Error(w, "Google authentication is not configured", http.StatusInternalServerError)
+			return
+		}
+		log.Printf("google auth failed: %v", err)
 		http.Error(w, "Failed to authenticate with Google", http.StatusInternalServerError)
 		return
 	}

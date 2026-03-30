@@ -21,6 +21,8 @@ const (
 )
 
 var ErrUnauthorized = errors.New("unauthorized")
+var ErrMisconfigured = errors.New("auth misconfigured")
+var ErrProviderUnavailable = errors.New("auth provider unavailable")
 
 type GoogleIdentity struct {
 	Subject   string
@@ -55,15 +57,22 @@ func NewService(db *sql.DB, verifier GoogleTokenVerifier, clientID string, secur
 
 func (s *Service) AuthenticateWithGoogle(ctx context.Context, idToken string) (*models.User, string, error) {
 	if s.clientID == "" {
-		return nil, "", fmt.Errorf("google auth is not configured")
+		return nil, "", fmt.Errorf("%w: google auth client id is not configured", ErrMisconfigured)
 	}
 	if s.verifier == nil {
-		return nil, "", fmt.Errorf("google token verifier is not configured")
+		return nil, "", fmt.Errorf("%w: google token verifier is not configured", ErrMisconfigured)
 	}
 
 	identity, err := s.verifier.VerifyIDToken(ctx, idToken, s.clientID)
 	if err != nil {
-		return nil, "", ErrUnauthorized
+		switch {
+		case errors.Is(err, ErrUnauthorized):
+			return nil, "", err
+		case errors.Is(err, ErrProviderUnavailable):
+			return nil, "", err
+		default:
+			return nil, "", fmt.Errorf("%w: %v", ErrUnauthorized, err)
+		}
 	}
 
 	user, err := s.upsertUser(ctx, identity)
