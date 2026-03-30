@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0] - 2026-03-28
+
+### Added
+- ✨ feat(seeder): Enhance income generation and report comparison
+- ✨ feat(seed): Add 10-year data seeding script
+- ✨ feat(report): Add CSV export functionality
+- ✨ feat(report): Enhance report generation with jar data and comparison
+- feat(seed): expand transaction seed data for better reports
+
+### Fixed
+- fix: correct yearly comparison period calculation in report generation
+
+### Changed
+- refactor: use string concatenation for SQL date format
+
 ## [0.4.0] - 2026-03-10
 
 ### Added

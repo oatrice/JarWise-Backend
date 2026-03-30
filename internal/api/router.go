@@ -28,7 +28,8 @@ func NewRouter() http.Handler {
 	txRepo := repository.NewSQLiteTransactionRepository(dbConn)
 	txService := service.NewTransactionService(txRepo, walletRepo)
 	txHandler := handlers.NewTransactionHandler(txService)
-	reportService := service.NewReportService(txRepo)
+	jarRepo := repository.NewSQLiteJarRepository(dbConn)
+	reportService := service.NewReportService(txRepo, jarRepo, walletRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
 
 	graphService := service.NewGraphService(txRepo)
@@ -48,6 +49,7 @@ func NewRouter() http.Handler {
 
 	mux.HandleFunc("/api/v1/transfers", txHandler.CreateTransfer)
 	mux.HandleFunc("/api/v1/reports", reportHandler.GetReport)
+	mux.HandleFunc("/api/v1/reports/export", reportHandler.ExportReport)
 	mux.HandleFunc("/api/v1/graph/expenses", graphHandler.GetExpenseGraphData)
 	mux.HandleFunc("/api/v1/charts", chartHandler.GetChartData)
 
@@ -60,5 +62,20 @@ func NewRouter() http.Handler {
 		w.Write([]byte("OK"))
 	})
 
-	return mux
+	return CORSMiddleware(mux)
+}
+
+func CORSMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

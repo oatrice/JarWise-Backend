@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"jarwise-backend/internal/models"
+	"strings"
 	"testing"
 	"time"
 )
@@ -21,8 +22,24 @@ func (f *fakeReportRepo) ListByDateRange(start, end time.Time) ([]models.Transac
 	return results, nil
 }
 
+type fakeJarRepo struct {
+	jars []models.Jar
+}
+
+func (f *fakeJarRepo) ListAll(ctx context.Context) ([]models.Jar, error) {
+	return f.jars, nil
+}
+
+type fakeWalletRepo struct {
+	wallets []models.Wallet
+}
+
+func (f *fakeWalletRepo) ListAll() ([]models.Wallet, error) {
+	return f.wallets, nil
+}
+
 func TestGenerateReport_NoFilters(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -40,7 +57,7 @@ func TestGenerateReport_NoFilters(t *testing.T) {
 }
 
 func TestGenerateReport_FilterByJar(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -64,7 +81,7 @@ func TestGenerateReport_FilterByJar(t *testing.T) {
 }
 
 func TestGenerateReport_FilterByWallet(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -88,7 +105,7 @@ func TestGenerateReport_FilterByWallet(t *testing.T) {
 }
 
 func TestGenerateReport_FilterByJarAndWallet(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -111,7 +128,7 @@ func TestGenerateReport_FilterByJarAndWallet(t *testing.T) {
 }
 
 func TestGenerateReport_NoResults(t *testing.T) {
-	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()})
+	service := NewReportService(&fakeReportRepo{transactions: seedReportTransactions()}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -161,7 +178,7 @@ func TestGenerateReport_FilterByJarExcludesEmptyJarID(t *testing.T) {
 		},
 	}
 
-	service := NewReportService(&fakeReportRepo{transactions: transactions})
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{}, &fakeWalletRepo{})
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
 
@@ -182,39 +199,235 @@ func TestGenerateReport_FilterByJarExcludesEmptyJarID(t *testing.T) {
 	}
 }
 
+func TestGenerateReport_Aggregated(t *testing.T) {
+	transactions := []models.Transaction{
+		{ID: "1", Amount: 100, Type: "income", JarID: "jar-1", Date: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)},
+		{ID: "2", Amount: 50, Type: "expense", JarID: "jar-1", Date: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)},
+		{ID: "3", Amount: 30, Type: "expense", JarID: "jar-2", Date: time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)},
+		{ID: "4", Amount: 200, Type: "income", JarID: "jar-2", Date: time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)},
+	}
+
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{}, &fakeWalletRepo{})
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 2, 23, 59, 59, 0, time.UTC)
+
+	report, err := service.GenerateReport(context.Background(), models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 1. Verify Summary
+	if report.Summary.Income != 300 {
+		t.Errorf("expected income 300, got %f", report.Summary.Income)
+	}
+	if report.Summary.Expense != 80 {
+		t.Errorf("expected expense 80, got %f", report.Summary.Expense)
+	}
+	if report.Summary.Net != 220 {
+		t.Errorf("expected net 220, got %f", report.Summary.Net)
+	}
+
+	// 2. Verify Trend (Daily buckets for 2 days)
+	if len(report.Trend) != 2 {
+		t.Errorf("expected 2 trend points, got %d", len(report.Trend))
+	} else {
+		// Day 1: Income 100, Expense 50
+		if report.Trend[0].Date != "2026-01-01" {
+			t.Errorf("expected label 2026-01-01, got %s", report.Trend[0].Date)
+		}
+		if report.Trend[0].Income != 100 || report.Trend[0].Expense != 50 {
+			t.Errorf("day 1 trend mismatch: income=%f expense=%f", report.Trend[0].Income, report.Trend[0].Expense)
+		}
+	}
+
+	// 3. Verify Breakdowns (ByCategory/Jar)
+	// Jar-1: Income 100, Expense 50
+	// Jar-2: Income 200, Expense 30
+	if len(report.ByCategory) != 2 {
+		t.Errorf("expected 2 category entries, got %d", len(report.ByCategory))
+	}
+}
+
+func TestGenerateReport_JarNamesAndComparison(t *testing.T) {
+	ctx := context.Background()
+	jars := []models.Jar{
+		{ID: "jar-1", Name: "Necessities"},
+		{ID: "jar-2", Name: "Play"},
+	}
+
+	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	transactions := []models.Transaction{
+		// Current month (March)
+		{ID: "t1", Amount: 100, Type: "expense", JarID: "jar-1", Date: now},
+		// Previous month (February)
+		{ID: "t2", Amount: 80, Type: "expense", JarID: "jar-1", Date: now.AddDate(0, -1, 0)},
+	}
+
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{jars: jars}, &fakeWalletRepo{})
+
+	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 3, 31, 23, 59, 59, 0, time.UTC)
+
+	report, err := service.GenerateReport(ctx, models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify Jar Name mapping
+	found := false
+	for _, cat := range report.ByCategory {
+		if cat.ID == "jar-1" {
+			found = true
+			if cat.Name != "Necessities" {
+				t.Errorf("expected name 'Necessities', got '%s'", cat.Name)
+			}
+			// Verify comparison data
+			if cat.Expense != 100 {
+				t.Errorf("expected current expense 100, got %f", cat.Expense)
+			}
+			if cat.PrevExpense != 80 {
+				t.Errorf("expected prev expense 80, got %f", cat.PrevExpense)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("jar-1 not found in report")
+	}
+}
+
+func TestGenerateReport_YearlyComparison(t *testing.T) {
+	ctx := context.Background()
+
+	// Current year (2026)
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	// Previous year (2025) - specifically January to test full year coverage
+	prev := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	transactions := []models.Transaction{
+		{ID: "t1", Amount: 100, Type: "expense", JarID: "jar-1", Date: now},
+		{ID: "t2", Amount: 50, Type: "expense", JarID: "jar-1", Date: prev},
+	}
+
+	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{}, &fakeWalletRepo{})
+
+	// Filter for full year 2026
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC)
+
+	report, err := service.GenerateReport(ctx, models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify Comparison Summary
+	if report.Comparison == nil {
+		t.Fatal("expected comparison data")
+	}
+
+	// Current period (2026) should have 100 expense
+	if report.Comparison.Current.Expense != 100 {
+		t.Errorf("expected current expense 100, got %f", report.Comparison.Current.Expense)
+	}
+
+	// Previous period (2025) should have 50 expense
+	// SUCCESS: If logic is duration-based (365 days back from 2026-01-01 -> 2025-01-01)
+	// FAILURE: If logic is just AddDate(0, -1, 0) -> 2025-12-01 to 2025-12-31
+	if report.Comparison.Previous.Expense != 50 {
+		t.Errorf("expected previous year expense 50, got %f. This confirms the logic error in period calculation.", report.Comparison.Previous.Expense)
+	}
+}
+
 func seedReportTransactions() []models.Transaction {
 	return []models.Transaction{
 		{
-			ID:       "tx-1",
-			Amount:   120.0,
-			Date:     time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC),
-			Type:     "expense",
-			JarID:    "jar-1",
-			WalletID: "wallet-1",
+			ID:          "tx-1",
+			Amount:      120.0,
+			Date:        time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC),
+			Type:        "expense",
+			JarID:       "jar-1",
+			WalletID:    "wallet-1",
+			Description: "Lunch",
 		},
 		{
-			ID:       "tx-2",
-			Amount:   80.0,
-			Date:     time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC),
-			Type:     "expense",
-			JarID:    "jar-2",
-			WalletID: "wallet-2",
+			ID:          "tx-2",
+			Amount:      80.0,
+			Date:        time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC),
+			Type:        "expense",
+			JarID:       "jar-2",
+			WalletID:    "wallet-2",
+			Description: "Bus",
 		},
 		{
-			ID:       "tx-3",
-			Amount:   42.5,
-			Date:     time.Date(2026, 1, 8, 12, 0, 0, 0, time.UTC),
-			Type:     "income",
-			JarID:    "jar-1",
-			WalletID: "wallet-2",
+			ID:          "tx-3",
+			Amount:      42.5,
+			Date:        time.Date(2026, 1, 8, 12, 0, 0, 0, time.UTC),
+			Type:        "income",
+			JarID:       "jar-1",
+			WalletID:    "wallet-2",
+			Description: "Refund",
 		},
 		{
-			ID:       "tx-4",
-			Amount:   200.0,
-			Date:     time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC),
-			Type:     "expense",
-			JarID:    "jar-3",
-			WalletID: "wallet-3",
+			ID:          "tx-4",
+			Amount:      200.0,
+			Date:        time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC),
+			Type:        "expense",
+			JarID:       "jar-3",
+			WalletID:    "wallet-3",
+			Description: "Electricity",
 		},
+	}
+}
+
+func TestExportTransactionsToCSV(t *testing.T) {
+	jars := []models.Jar{
+		{ID: "jar-1", Name: "Food"},
+		{ID: "jar-2", Name: "Transport"},
+	}
+	wallets := []models.Wallet{
+		{ID: "wallet-1", Name: "Cash"},
+		{ID: "wallet-2", Name: "Bank"},
+	}
+
+	service := NewReportService(
+		&fakeReportRepo{transactions: seedReportTransactions()},
+		&fakeJarRepo{jars: jars},
+		&fakeWalletRepo{wallets: wallets},
+	)
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
+
+	csvData, err := service.ExportTransactionsToCSV(context.Background(), models.ReportFilter{
+		StartDate: start,
+		EndDate:   end,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(csvData) == 0 {
+		t.Fatal("expected non-empty CSV data")
+	}
+
+	content := string(csvData)
+	// Check header
+	expectedHeader := "Date,Description,Amount,Type,Wallet,Jar"
+	if !strings.Contains(content, expectedHeader) {
+		t.Errorf("expected header '%s' not found", expectedHeader)
+	}
+
+	// Check sample row (tx-1: 2026-01-02, Lunch, 120.00, expense, Cash, Food)
+	expectedRow := "2026-01-02,Lunch,120.00,expense,Cash,Food"
+	if !strings.Contains(content, expectedRow) {
+		t.Errorf("expected row '%s' not found", expectedRow)
 	}
 }

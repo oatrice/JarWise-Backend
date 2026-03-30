@@ -13,6 +13,7 @@ type WalletRepository interface {
 	// To satisfy Data Integrity Requirement
 	DeleteWithReplacement(id string, replacementWalletID string) error
 	DeleteCascade(id string) error
+	ListAll() ([]models.Wallet, error)
 }
 
 type sqliteWalletRepository struct {
@@ -99,4 +100,22 @@ func (r *sqliteWalletRepository) DeleteCascade(id string) error {
 	}
 
 	return tx.Commit()
+}
+func (r *sqliteWalletRepository) ListAll() ([]models.Wallet, error) {
+	query := `SELECT id, name, currency, balance, type FROM wallets`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var wallets []models.Wallet
+	for rows.Next() {
+		var w models.Wallet
+		if err := rows.Scan(&w.ID, &w.Name, &w.Currency, &w.Balance, &w.Type); err != nil {
+			return nil, err
+		}
+		wallets = append(wallets, w)
+	}
+	return wallets, nil
 }

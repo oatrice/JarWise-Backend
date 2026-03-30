@@ -30,7 +30,7 @@ func (r *sqliteTransactionRepository) Create(tx *models.Transaction) error {
 		(id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.Exec(query,
-		tx.ID, tx.Amount, tx.Description, tx.Date, tx.Type,
+		tx.ID, tx.Amount, tx.Description, tx.Date.UTC(), tx.Type,
 		tx.WalletID, tx.JarID, tx.RelatedTransactionID)
 	return err
 }
@@ -48,7 +48,7 @@ func (r *sqliteTransactionRepository) CreateTransfer(expense, income *models.Tra
 
 	// Insert Expense
 	_, err = tx.Exec(query,
-		expense.ID, expense.Amount, expense.Description, expense.Date, expense.Type,
+		expense.ID, expense.Amount, expense.Description, expense.Date.UTC(), expense.Type,
 		expense.WalletID, expense.JarID, expense.RelatedTransactionID)
 	if err != nil {
 		return fmt.Errorf("failed to insert expense: %w", err)
@@ -56,7 +56,7 @@ func (r *sqliteTransactionRepository) CreateTransfer(expense, income *models.Tra
 
 	// Insert Income
 	_, err = tx.Exec(query,
-		income.ID, income.Amount, income.Description, income.Date, income.Type,
+		income.ID, income.Amount, income.Description, income.Date.UTC(), income.Type,
 		income.WalletID, income.JarID, income.RelatedTransactionID)
 	if err != nil {
 		return fmt.Errorf("failed to insert income: %w", err)
@@ -100,7 +100,7 @@ func (r *sqliteTransactionRepository) ListByDateRange(start, end time.Time) ([]m
 		WHERE date >= ? AND date <= ?
 		ORDER BY date DESC`
 
-	rows, err := r.db.Query(query, start, end)
+	rows, err := r.db.Query(query, start.UTC(), end.UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -197,9 +197,9 @@ func (r *sqliteTransactionRepository) GetExpenseGraphData(jarID, period string) 
 		return nil, fmt.Errorf("invalid period: %s", period)
 	}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT 
-			strftime('%s', date) as period_label, 
+			strftime('` + dateFormat + `', date) as period_label, 
 			ABS(SUM(amount)) as total_amount
 		FROM transactions 
 		WHERE 
@@ -207,7 +207,7 @@ func (r *sqliteTransactionRepository) GetExpenseGraphData(jarID, period string) 
 			AND type = 'expense'
 		GROUP BY period_label
 		ORDER BY period_label ASC
-	`, dateFormat)
+	`
 
 	rows, err := r.db.Query(query, jarID)
 	if err != nil {
