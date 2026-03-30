@@ -12,19 +12,24 @@ import (
 
 type reportTransactionRepository interface {
 	ListByDateRange(start, end time.Time) ([]models.Transaction, error)
+	ListByDateRangeForUser(userID string, start, end time.Time) ([]models.Transaction, error)
 }
 
 type jarRepository interface {
 	ListAll(ctx context.Context) ([]models.Jar, error)
+	ListAllForUser(ctx context.Context, userID string) ([]models.Jar, error)
 }
 
 type walletRepository interface {
 	ListAll() ([]models.Wallet, error)
+	ListAllForUser(userID string) ([]models.Wallet, error)
 }
 
 type ReportService interface {
 	GenerateReport(ctx context.Context, filter models.ReportFilter) (*models.Report, error)
 	ExportTransactionsToCSV(ctx context.Context, filter models.ReportFilter) ([]byte, error)
+	GenerateReportForUser(ctx context.Context, userID string, filter models.ReportFilter) (*models.Report, error)
+	ExportTransactionsToCSVForUser(ctx context.Context, userID string, filter models.ReportFilter) ([]byte, error)
 }
 
 type reportService struct {
@@ -38,8 +43,20 @@ func NewReportService(repo reportTransactionRepository, jarRepo jarRepository, w
 }
 
 func (s *reportService) GenerateReport(ctx context.Context, filter models.ReportFilter) (*models.Report, error) {
+	return s.GenerateReportForUser(ctx, "", filter)
+}
+
+func (s *reportService) GenerateReportForUser(ctx context.Context, userID string, filter models.ReportFilter) (*models.Report, error) {
 	// 1. Fetch jars for name mapping
-	jars, err := s.jarRepo.ListAll(ctx)
+	var (
+		jars []models.Jar
+		err  error
+	)
+	if userID != "" {
+		jars, err = s.jarRepo.ListAllForUser(ctx, userID)
+	} else {
+		jars, err = s.jarRepo.ListAll(ctx)
+	}
 	if err != nil {
 		// Log error but continue with IDs if jars can't be fetched
 		jars = []models.Jar{}
@@ -50,7 +67,12 @@ func (s *reportService) GenerateReport(ctx context.Context, filter models.Report
 	}
 
 	// 2. Fetch transactions for the requested period
-	transactions, err := s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
+	var transactions []models.Transaction
+	if userID != "" {
+		transactions, err = s.repo.ListByDateRangeForUser(userID, filter.StartDate, filter.EndDate)
+	} else {
+		transactions, err = s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +89,12 @@ func (s *reportService) GenerateReport(ctx context.Context, filter models.Report
 	// Subtract 1 nanosecond to ensure no overlap if the repository uses inclusive bounds
 	prevEnd := filter.StartDate.Add(-time.Nanosecond)
 
-	prevTransactions, err := s.repo.ListByDateRange(prevStart, prevEnd)
+	var prevTransactions []models.Transaction
+	if userID != "" {
+		prevTransactions, err = s.repo.ListByDateRangeForUser(userID, prevStart, prevEnd)
+	} else {
+		prevTransactions, err = s.repo.ListByDateRange(prevStart, prevEnd)
+	}
 	if err == nil {
 		prevFiltered := applyReportFilters(prevTransactions, models.ReportFilter{
 			StartDate: prevStart,
@@ -120,21 +147,43 @@ func (s *reportService) GenerateReport(ctx context.Context, filter models.Report
 }
 
 func (s *reportService) ExportTransactionsToCSV(ctx context.Context, filter models.ReportFilter) ([]byte, error) {
+	return s.ExportTransactionsToCSVForUser(ctx, "", filter)
+}
+
+func (s *reportService) ExportTransactionsToCSVForUser(ctx context.Context, userID string, filter models.ReportFilter) ([]byte, error) {
 	// 1. Fetch dependencies for name mapping
-	jars, _ := s.jarRepo.ListAll(ctx)
+	var jars []models.Jar
+	if userID != "" {
+		jars, _ = s.jarRepo.ListAllForUser(ctx, userID)
+	} else {
+		jars, _ = s.jarRepo.ListAll(ctx)
+	}
 	jarMap := make(map[string]string)
 	for _, j := range jars {
 		jarMap[j.ID] = j.Name
 	}
 
-	wallets, _ := s.walletRepo.ListAll()
+	var wallets []models.Wallet
+	if userID != "" {
+		wallets, _ = s.walletRepo.ListAllForUser(userID)
+	} else {
+		wallets, _ = s.walletRepo.ListAll()
+	}
 	walletMap := make(map[string]string)
 	for _, w := range wallets {
 		walletMap[w.ID] = w.Name
 	}
 
 	// 2. Fetch transactions
-	transactions, err := s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
+	var (
+		transactions []models.Transaction
+		err          error
+	)
+	if userID != "" {
+		transactions, err = s.repo.ListByDateRangeForUser(userID, filter.StartDate, filter.EndDate)
+	} else {
+		transactions, err = s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
+	}
 	if err != nil {
 		return nil, err
 	}

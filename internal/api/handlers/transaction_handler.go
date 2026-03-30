@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"jarwise-backend/internal/auth"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/service"
 	"net/http"
@@ -57,7 +58,13 @@ func (h *TransactionHandler) CreateTransfer(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	expense, income, err := h.service.CreateTransfer(req.FromWalletID, req.ToWalletID, req.Amount, date, req.Notes)
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	expense, income, err := h.service.CreateTransferForUser(user.ID, req.FromWalletID, req.ToWalletID, req.Amount, date, req.Notes)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

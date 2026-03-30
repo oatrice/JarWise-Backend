@@ -10,11 +10,13 @@ import (
 // chartTransactionRepository interface สำหรับ dependency injection
 type chartTransactionRepository interface {
 	ListByDateRange(start, end time.Time) ([]models.Transaction, error)
+	ListByDateRangeForUser(userID string, start, end time.Time) ([]models.Transaction, error)
 }
 
 // ChartService interface สำหรับ chart data aggregation
 type ChartService interface {
 	GetChartData(ctx context.Context, filter models.ReportFilter) (*models.ChartData, error)
+	GetChartDataForUser(ctx context.Context, userID string, filter models.ReportFilter) (*models.ChartData, error)
 }
 
 type chartService struct {
@@ -28,8 +30,20 @@ func NewChartService(repo chartTransactionRepository) ChartService {
 
 // GetChartData ดึงข้อมูล transactions แล้ว aggregate เป็น chart data ทั้งหมดในรอบเดียว
 func (s *chartService) GetChartData(ctx context.Context, filter models.ReportFilter) (*models.ChartData, error) {
+	return s.GetChartDataForUser(ctx, "", filter)
+}
+
+func (s *chartService) GetChartDataForUser(ctx context.Context, userID string, filter models.ReportFilter) (*models.ChartData, error) {
 	// 1. ดึง transactions ตาม date range
-	transactions, err := s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
+	var (
+		transactions []models.Transaction
+		err          error
+	)
+	if userID != "" {
+		transactions, err = s.repo.ListByDateRangeForUser(userID, filter.StartDate, filter.EndDate)
+	} else {
+		transactions, err = s.repo.ListByDateRange(filter.StartDate, filter.EndDate)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +55,7 @@ func (s *chartService) GetChartData(ctx context.Context, filter models.ReportFil
 	chart := s.aggregate(filtered)
 
 	// 4. Comparison: ดึงข้อมูล previous period
-	comparison, err := s.buildComparison(ctx, filter, chart.Summary)
+	comparison, err := s.buildComparison(ctx, userID, filter, chart.Summary)
 	if err != nil {
 		return nil, err
 	}
@@ -112,12 +126,20 @@ func (s *chartService) aggregate(transactions []models.Transaction) *models.Char
 }
 
 // buildComparison คำนวณ previous period แล้วเปรียบเทียบ
-func (s *chartService) buildComparison(ctx context.Context, filter models.ReportFilter, currentSummary models.ChartSummary) (*models.ComparisonData, error) {
+func (s *chartService) buildComparison(ctx context.Context, userID string, filter models.ReportFilter, currentSummary models.ChartSummary) (*models.ComparisonData, error) {
 	duration := filter.EndDate.Sub(filter.StartDate)
 	prevStart := filter.StartDate.Add(-duration - time.Nanosecond)
 	prevEnd := filter.StartDate.Add(-time.Nanosecond)
 
-	prevTransactions, err := s.repo.ListByDateRange(prevStart, prevEnd)
+	var (
+		prevTransactions []models.Transaction
+		err              error
+	)
+	if userID != "" {
+		prevTransactions, err = s.repo.ListByDateRangeForUser(userID, prevStart, prevEnd)
+	} else {
+		prevTransactions, err = s.repo.ListByDateRange(prevStart, prevEnd)
+	}
 	if err != nil {
 		return nil, err
 	}

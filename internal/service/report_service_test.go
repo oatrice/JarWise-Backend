@@ -22,6 +22,10 @@ func (f *fakeReportRepo) ListByDateRange(start, end time.Time) ([]models.Transac
 	return results, nil
 }
 
+func (f *fakeReportRepo) ListByDateRangeForUser(_ string, start, end time.Time) ([]models.Transaction, error) {
+	return f.ListByDateRange(start, end)
+}
+
 type fakeJarRepo struct {
 	jars []models.Jar
 }
@@ -30,12 +34,20 @@ func (f *fakeJarRepo) ListAll(ctx context.Context) ([]models.Jar, error) {
 	return f.jars, nil
 }
 
+func (f *fakeJarRepo) ListAllForUser(ctx context.Context, _ string) ([]models.Jar, error) {
+	return f.ListAll(ctx)
+}
+
 type fakeWalletRepo struct {
 	wallets []models.Wallet
 }
 
 func (f *fakeWalletRepo) ListAll() ([]models.Wallet, error) {
 	return f.wallets, nil
+}
+
+func (f *fakeWalletRepo) ListAllForUser(_ string) ([]models.Wallet, error) {
+	return f.ListAll()
 }
 
 func TestGenerateReport_NoFilters(t *testing.T) {

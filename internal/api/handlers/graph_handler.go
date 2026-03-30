@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"jarwise-backend/internal/auth"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/service"
 	"net/http"
@@ -33,7 +34,13 @@ func (h *GraphHandler) GetExpenseGraphData(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	data, err := h.service.GetExpenseGraphData(jarID, period)
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	data, err := h.service.GetExpenseGraphDataForUser(user.ID, jarID, period)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

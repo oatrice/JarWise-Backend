@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"jarwise-backend/internal/auth"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/service"
 	"net/http"
@@ -55,7 +56,13 @@ func (h *ChartHandler) GetChartData(w http.ResponseWriter, r *http.Request) {
 		WalletIDs: walletIDs,
 	}
 
-	chart, err := h.service.GetChartData(r.Context(), filter)
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	chart, err := h.service.GetChartDataForUser(r.Context(), user.ID, filter)
 	if err != nil {
 		http.Error(w, "Failed to generate chart data", http.StatusInternalServerError)
 		return

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"jarwise-backend/internal/auth"
 	"jarwise-backend/internal/repository"
 	"net/http"
 	"strings"
@@ -28,27 +29,32 @@ func (h *WalletHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := pathParts[4]
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
 
 	cascade := r.URL.Query().Get("cascade") == "true"
 	replacementID := r.URL.Query().Get("replacement_id")
 
 	if cascade {
 		// Cascade delete
-		err := h.repo.DeleteCascade(id)
+		err := h.repo.DeleteCascadeForUser(user.ID, id)
 		if err != nil {
 			http.Error(w, "Failed to cascade delete wallet: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else if replacementID == "" {
 		// Attempt direct delete
-		err := h.repo.Delete(id)
+		err := h.repo.DeleteForUser(user.ID, id)
 		if err != nil {
 			http.Error(w, "Failed to delete wallet (it might have transactions): "+err.Error(), http.StatusConflict)
 			return
 		}
 	} else {
 		// Delete with replacement
-		err := h.repo.DeleteWithReplacement(id, replacementID)
+		err := h.repo.DeleteWithReplacementForUser(user.ID, id, replacementID)
 		if err != nil {
 			http.Error(w, "Failed to delete with replacement: "+err.Error(), http.StatusInternalServerError)
 			return

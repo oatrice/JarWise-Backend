@@ -63,27 +63,31 @@ func (i *Importer) ImportData(data *models.ParsedData) error {
 	defer tx.Rollback()
 
 	for _, wallet := range wallets {
+		wallet.UserID = models.DefaultLocalUserID
 		if _, err := tx.Exec(
-			`INSERT INTO wallets (id, name, currency, balance, type) VALUES (?, ?, ?, ?, ?)`,
-			wallet.ID, wallet.Name, wallet.Currency, wallet.Balance, wallet.Type,
+			`INSERT INTO wallets (id, user_id, name, currency, balance, type) VALUES (?, ?, ?, ?, ?, ?)`,
+			wallet.ID, wallet.UserID, wallet.Name, wallet.Currency, wallet.Balance, wallet.Type,
 		); err != nil {
 			return fmt.Errorf("failed to insert wallet %s: %w", wallet.ID, err)
 		}
 	}
 
 	for _, jar := range jars {
+		jar.UserID = models.DefaultLocalUserID
 		if _, err := tx.Exec(
-			`INSERT INTO jars (id, name, type, parent_id, wallet_id, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			jar.ID, jar.Name, jar.Type, nullableString(jar.ParentID), nullableString(jar.WalletID), jar.Icon, jar.Color,
+			`INSERT INTO jars (id, user_id, name, type, parent_id, wallet_id, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			jar.ID, jar.UserID, jar.Name, jar.Type, nullableString(jar.ParentID), nullableString(jar.WalletID), jar.Icon, jar.Color,
 		); err != nil {
 			return fmt.Errorf("failed to insert jar %s: %w", jar.ID, err)
 		}
 	}
 
 	for _, transaction := range transactions {
+		transaction.UserID = models.DefaultLocalUserID
 		if _, err := tx.Exec(
-			`INSERT INTO transactions (id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO transactions (id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			transaction.ID,
+			transaction.UserID,
 			transaction.Amount,
 			transaction.Description,
 			transaction.Date.UTC(),
