@@ -256,7 +256,6 @@ func (s *reportService) aggregate(transactions []models.Transaction, filter mode
 	}
 }
 
-
 // Helpers for sorting
 
 func sortTrend(m map[string]*models.TrendPoint) []models.TrendPoint {

@@ -11,8 +11,8 @@ import (
 )
 
 type jar struct {
-	ID    string
-	Name  string
+	ID   string
+	Name string
 }
 
 func main() {
@@ -67,7 +67,7 @@ func main() {
 	for m := 0; m < 120; m++ {
 		// Calculate the target month
 		targetMonth := now.AddDate(0, -m, 0)
-		
+
 		// Rich Monthly Income (2-5 sources)
 		numIncomes := 2 + rand.Intn(4)
 		incomeSources := []struct {
@@ -76,13 +76,13 @@ func main() {
 			min  float64
 			max  float64
 		}{
-			{"Main Salary", "1", 45000, 55000},    // Necessities
-			{"Project Fee", "3", 8000, 25000},     // Education
-			{"Consulting", "5", 5000, 15000},      // Freedom
-			{"Dividends", "5", 1000, 4000},        // Freedom
-			{"Freelance Task", "2", 3000, 12000},  // Play
-			{"Gift Received", "6", 500, 3000},     // Give
-			{"Annual Bonus", "4", 10000, 50000},   // Long Term (rare, we'll randomize)
+			{"Main Salary", "1", 45000, 55000},   // Necessities
+			{"Project Fee", "3", 8000, 25000},    // Education
+			{"Consulting", "5", 5000, 15000},     // Freedom
+			{"Dividends", "5", 1000, 4000},       // Freedom
+			{"Freelance Task", "2", 3000, 12000}, // Play
+			{"Gift Received", "6", 500, 3000},    // Give
+			{"Annual Bonus", "4", 10000, 50000},  // Long Term (rare, we'll randomize)
 		}
 
 		for i := 0; i < numIncomes; i++ {
@@ -111,7 +111,7 @@ func main() {
 			txID := fmt.Sprintf("tx-%d-%d", m, e)
 			selectedJar := jars[rand.Intn(len(jars))]
 			amount := 100.0 + (rand.Float64() * 2000) // 100 - 2100 per expense
-			
+
 			// Slightly randomize the day within the month
 			dayOffset := rand.Intn(28)
 			txDate := time.Date(targetMonth.Year(), targetMonth.Month(), dayOffset+1, 12, 0, 0, 0, time.UTC)

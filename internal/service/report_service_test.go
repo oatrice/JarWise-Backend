@@ -257,7 +257,7 @@ func TestGenerateReport_JarNamesAndComparison(t *testing.T) {
 		{ID: "jar-1", Name: "Necessities"},
 		{ID: "jar-2", Name: "Play"},
 	}
-	
+
 	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
 	transactions := []models.Transaction{
 		// Current month (March)
@@ -267,7 +267,7 @@ func TestGenerateReport_JarNamesAndComparison(t *testing.T) {
 	}
 
 	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{jars: jars}, &fakeWalletRepo{})
-	
+
 	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 3, 31, 23, 59, 59, 0, time.UTC)
 
@@ -303,19 +303,19 @@ func TestGenerateReport_JarNamesAndComparison(t *testing.T) {
 
 func TestGenerateReport_YearlyComparison(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Current year (2026)
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	// Previous year (2025) - specifically January to test full year coverage
 	prev := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
-	
+
 	transactions := []models.Transaction{
 		{ID: "t1", Amount: 100, Type: "expense", JarID: "jar-1", Date: now},
 		{ID: "t2", Amount: 50, Type: "expense", JarID: "jar-1", Date: prev},
 	}
 
 	service := NewReportService(&fakeReportRepo{transactions: transactions}, &fakeJarRepo{}, &fakeWalletRepo{})
-	
+
 	// Filter for full year 2026
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC)

@@ -1,7 +1,6 @@
 package main
 
 import (
-
 	"database/sql"
 	"fmt"
 	"jarwise-backend/internal/db"
@@ -33,7 +32,6 @@ func main() {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
 	defer dbConn.Close()
-
 
 	// 1. Clear existing data
 	fmt.Println("Wiping existing data...")
