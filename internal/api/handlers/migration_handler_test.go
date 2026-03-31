@@ -188,9 +188,11 @@ func validMmbakPath(t *testing.T) string {
 
 func validXlsFixture() string {
 	return `<html><body><table>
-<tr><td>2025-01-15</td><td>Cash Wallet</td><td>Food</td><td>Lunch</td><td>-100.50</td></tr>
-<tr><td>2025-01-20</td><td>Bank Account</td><td>Salary</td><td>Monthly Salary</td><td>50000.00</td></tr>
-<tr><td>2025-01-22</td><td>Cash Wallet</td><td>Transport</td><td>Bus fare</td><td>-35.00</td></tr>
+<tr><th>Date</th><th>Account</th><th>Category</th><th>Subcategory</th><th>Note</th><th>THB</th><th>Income/Expense</th><th>Description</th><th>Amount</th><th>Currency</th><th>Account</th></tr>
+<tr><td>01/22/2025 08:15:00</td><td>Cash Wallet</td><td>Food</td><td></td><td>Lunch</td><td>100.50</td><td>Expense</td><td></td><td>100.50</td><td>THB</td><td>100.50</td></tr>
+<tr><td>01/20/2025 09:00:00</td><td>Bank Account</td><td>Salary</td><td></td><td>Monthly Salary</td><td>50000.00</td><td>Income</td><td></td><td>50000.00</td><td>THB</td><td>50000.00</td></tr>
+<tr><td>01/15/2025 18:00:00</td><td>Cash Wallet</td><td>Transport</td><td></td><td>Bus fare</td><td>35.00</td><td>Expense</td><td></td><td>35.00</td><td>THB</td><td>35.00</td></tr>
+<tr><td>01/25/2025 12:00:00</td><td>Cash Wallet</td><td>Bank Account</td><td></td><td>Transfer to savings</td><td>5000.00</td><td>Transfer-Out</td><td></td><td>5000.00</td><td>THB</td><td>5000.00</td></tr>
 </table></body></html>`
 }
 

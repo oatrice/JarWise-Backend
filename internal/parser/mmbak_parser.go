@@ -15,9 +15,8 @@ func NewMmbakParser() *MmbakParser {
 	return &MmbakParser{}
 }
 
-// Parse reads the SQLite file and extracts data
+// Parse reads the SQLite file and extracts data.
 func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
-	// 1. Open Database
 	db, err := sql.Open("sqlite3", filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -34,8 +33,7 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		Transactions: []models.TransactionDTO{},
 	}
 
-	// 2. Query Accounts (Table 'ASSETS')
-	// Schema: uid (TEXT), NIC_NAME (TEXT), TYPE (INT)
+	accountIDs := make(map[string]struct{})
 	assetsRows, err := db.Query("SELECT uid, NIC_NAME FROM ASSETS")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ASSETS: %w", err)
@@ -47,10 +45,13 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		if err := assetsRows.Scan(&acc.ID, &acc.Name); err != nil {
 			return nil, err
 		}
+		accountIDs[acc.ID] = struct{}{}
 		result.Accounts = append(result.Accounts, acc)
 	}
+	if err := assetsRows.Err(); err != nil {
+		return nil, err
+	}
 
-	// 3. Query Categories (Table 'ZCATEGORY')
 	catRows, err := db.Query("SELECT uid, NAME, TYPE FROM ZCATEGORY")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ZCATEGORY: %w", err)
@@ -66,81 +67,140 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		cat.Type = int(catType.Int64)
 		result.Categories = append(result.Categories, cat)
 	}
+	if err := catRows.Err(); err != nil {
+		return nil, err
+	}
 
-	// 4. Query Transactions (Table 'INOUTCOME')
-	// Columns: uid, ZDATE (date), ZMONEY (amount), DO_TYPE (type? or maybe just check ZMONEY sign?), ZCONTENT (note)
-	// categoryUid (Category), assetUid (Account)
-	// Note: DO_TYPE needs verification aka '1' or '2'.
-	// Usually Money Manager uses: 1=Income, 2=Expense, 3=Transfer (or 0 index?)
-	// Let's inspect data later if needed, assuming logic:
-	// We select raw columns and map
-	transRows, err := db.Query(`
-        SELECT uid, ZDATE, ZMONEY, DO_TYPE, ZCONTENT, categoryUid, assetUid 
-        FROM INOUTCOME 
-        WHERE DO_TYPE IN ('0', '1', '2', '3') OR DO_TYPE IS NULL
-    `)
-	// WARN: DO_TYPE might be varchar based on schema.
+	inoutcomeColumns, err := loadSQLiteColumnSet(db, "INOUTCOME")
+	if err != nil {
+		return nil, err
+	}
+
+	toAssetExpr := "''"
+	if _, ok := inoutcomeColumns["toAssetUid"]; ok {
+		toAssetExpr = "COALESCE(toAssetUid, '')"
+	}
+
+	transRows, err := db.Query(fmt.Sprintf(`
+		SELECT uid, ZDATE, ZMONEY, DO_TYPE, ZCONTENT, categoryUid, assetUid, %s AS toAssetUid
+		FROM INOUTCOME
+		WHERE DO_TYPE IN ('0', '1', '2', '3') OR DO_TYPE IS NULL
+	`, toAssetExpr))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query INOUTCOME: %w", err)
 	}
 	defer transRows.Close()
 
 	for transRows.Next() {
-		var t models.TransactionDTO
-		var note, doType, catID, assetID, dateStr sql.NullString
-		var money sql.NullFloat64
+		var (
+			t                            models.TransactionDTO
+			dateStr, note, doType        sql.NullString
+			categoryID, assetID, toAsset sql.NullString
+			money                        sql.NullFloat64
+		)
 
-		if err := transRows.Scan(&t.ID, &dateStr, &money, &doType, &note, &catID, &assetID); err != nil {
+		if err := transRows.Scan(&t.ID, &dateStr, &money, &doType, &note, &categoryID, &assetID, &toAsset); err != nil {
 			return nil, err
 		}
+
 		t.Date = dateStr.String
-		t.Amount = money.Float64
+		t.Amount = math.Abs(money.Float64)
 		t.Note = note.String
-		t.CategoryID = catID.String
 		t.AccountID = assetID.String
 
-		// Map Type
-		// DO_TYPE values: '1'=Income, '0' or '2'=Expense, '3'=Transfer?
-		// Need to confirm exact mapping. Assuming:
-		// 1 = Income
-		// 2 = Transfer? (Or 0?)
-		// Let's refine based on review suggestion:
-		dt := doType.String
-		isTransfer := false
+		txType, isTransfer := mapMoneyManagerTransactionType(doType.String, money.Float64)
+		t.Type = txType
 
-		switch dt {
-		case "1": // Income
-			t.Type = 1
-		case "0", "2": // Expense (generic guess, adjust if 2 is transfer)
-			// Wait, if 2 is transfer, we should handle it.
-			// Let's assume standard:
-			// 0=Expense, 1=Income, 2=Transfer
-			if dt == "2" {
-				t.Type = 2
-				isTransfer = true
-			} else {
-				t.Type = 0
-			}
-		case "3": // Some versions use 3 for transfer
-			t.Type = 2
-			isTransfer = true
-		default:
-			// Default to expense
-			t.Type = 0
+		if isTransfer {
+			t.CategoryID = ""
+			destinationAccountID := firstKnownAccount(accountIDs, toAsset.String, categoryID.String)
+			t.ToAccountID = destinationAccountID
+		} else {
+			t.CategoryID = normalizeMoneyManagerCategory(categoryID.String)
 		}
 
 		result.Transactions = append(result.Transactions, t)
 
-		// Aggregate Totals
-		// Exclude transfers from Income/Expense totals for now (or handle them separately)
 		if !isTransfer {
-			if t.Type == 1 { // Income
+			if t.Type == 1 {
 				result.TotalIncome += t.Amount
-			} else { // Expense
-				result.TotalExpense += math.Abs(t.Amount)
+			} else {
+				result.TotalExpense += t.Amount
 			}
 		}
 	}
+	if err := transRows.Err(); err != nil {
+		return nil, err
+	}
 
 	return result, nil
+}
+
+func loadSQLiteColumnSet(db *sql.DB, tableName string) (map[string]struct{}, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns := make(map[string]struct{})
+	for rows.Next() {
+		var (
+			cid          int
+			name         string
+			columnType   string
+			notNull      int
+			defaultValue sql.NullString
+			primaryKey   int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return nil, err
+		}
+		columns[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(columns) == 0 {
+		return nil, fmt.Errorf("failed to query %s: table not found or empty schema", tableName)
+	}
+
+	return columns, nil
+}
+
+func mapMoneyManagerTransactionType(rawType string, amount float64) (int, bool) {
+	switch rawType {
+	case "1":
+		return 1, false
+	case "2", "3":
+		return 2, true
+	case "0":
+		return 0, false
+	default:
+		if amount < 0 {
+			return 0, false
+		}
+		return 0, false
+	}
+}
+
+func normalizeMoneyManagerCategory(categoryID string) string {
+	switch categoryID {
+	case "", "0", "-4":
+		return ""
+	default:
+		return categoryID
+	}
+}
+
+func firstKnownAccount(accounts map[string]struct{}, candidates ...string) string {
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, ok := accounts[candidate]; ok {
+			return candidate
+		}
+	}
+	return ""
 }
