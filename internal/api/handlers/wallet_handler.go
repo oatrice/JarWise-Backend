@@ -65,7 +65,23 @@ func (h *WalletHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WalletHandler) List(w http.ResponseWriter, r *http.Request) {
-	// Basic implementation for verification
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	wallets, err := h.repo.ListAllForUser(user.ID)
+	if err != nil {
+		http.Error(w, "Failed to load wallets", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Wallet list not fully implemented, but repository is working"})
+	json.NewEncoder(w).Encode(wallets)
 }

@@ -13,9 +13,11 @@ import (
 	"jarwise-backend/internal/parser"
 	"jarwise-backend/internal/validator"
 	"log"
+	"math"
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -747,6 +749,11 @@ func migrationJobToStatus(job *models.MigrationJob) *models.MigrationJobStatusRe
 }
 
 func parseMMTransactionDate(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, fmt.Errorf("unsupported date format %q", value)
+	}
+
 	layouts := []string{
 		"2006-01-02 15:04:05",
 		"2006-01-02",
@@ -759,7 +766,31 @@ func parseMMTransactionDate(value string) (time.Time, error) {
 			return parsed, nil
 		}
 	}
+
+	if unixTime, ok := parseUnixLikeTimestamp(value); ok {
+		return unixTime, nil
+	}
+
 	return time.Time{}, fmt.Errorf("unsupported date format %q", value)
+}
+
+func parseUnixLikeTimestamp(value string) (time.Time, bool) {
+	raw, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	absValue := math.Abs(float64(raw))
+	switch {
+	case absValue >= 1e18:
+		return time.Unix(0, raw).UTC(), true
+	case absValue >= 1e15:
+		return time.UnixMicro(raw).UTC(), true
+	case absValue >= 1e12:
+		return time.UnixMilli(raw).UTC(), true
+	default:
+		return time.Unix(raw, 0).UTC(), true
+	}
 }
 
 func fingerprintWallet(account models.AccountDTO) string {

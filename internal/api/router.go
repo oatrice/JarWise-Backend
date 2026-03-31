@@ -60,6 +60,7 @@ func NewRouterWithOptions(options RouterOptions) http.Handler {
 	txService := service.NewTransactionService(txRepo, walletRepo)
 	txHandler := handlers.NewTransactionHandler(txService)
 	jarRepo := repository.NewSQLiteJarRepository(dbConn)
+	jarHandler := handlers.NewJarHandler(jarRepo)
 	reportService := service.NewReportService(txRepo, jarRepo, walletRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
 
@@ -86,11 +87,14 @@ func NewRouterWithOptions(options RouterOptions) http.Handler {
 		migrationHandler.GetJob(w, r)
 	}))
 
+	mux.Handle("/api/v1/transactions", requireAuth(txHandler.List))
 	mux.Handle("/api/v1/transfers", requireAuth(txHandler.CreateTransfer))
+	mux.Handle("/api/v1/wallets", requireAuth(walletHandler.List))
 	mux.Handle("/api/v1/reports", requireAuth(reportHandler.GetReport))
 	mux.Handle("/api/v1/reports/export", requireAuth(reportHandler.ExportReport))
 	mux.Handle("/api/v1/graph/expenses", requireAuth(graphHandler.GetExpenseGraphData))
 	mux.Handle("/api/v1/charts", requireAuth(chartHandler.GetChartData))
+	mux.Handle("/api/v1/jars", requireAuth(jarHandler.List))
 	mux.Handle("/api/v1/wallets/", requireAuth(walletHandler.HandleDelete))
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

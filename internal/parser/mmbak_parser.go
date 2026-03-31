@@ -33,7 +33,13 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		Transactions: []models.TransactionDTO{},
 	}
 
+	reversedSemantics, err := detectReversedMoneyManagerSemantics(db)
+	if err != nil {
+		return nil, err
+	}
+
 	accountIDs := make(map[string]struct{})
+	categoryTypes := make(map[string]int)
 	assetsRows, err := db.Query("SELECT uid, NIC_NAME FROM ASSETS")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ASSETS: %w", err)
@@ -64,7 +70,8 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		if err := catRows.Scan(&cat.ID, &cat.Name, &catType); err != nil {
 			return nil, err
 		}
-		cat.Type = int(catType.Int64)
+		cat.Type = normalizeMoneyManagerCategoryType(int(catType.Int64), reversedSemantics)
+		categoryTypes[cat.ID] = cat.Type
 		result.Categories = append(result.Categories, cat)
 	}
 	if err := catRows.Err(); err != nil {
@@ -108,7 +115,7 @@ func (p *MmbakParser) Parse(filePath string) (*models.ParsedData, error) {
 		t.Note = note.String
 		t.AccountID = assetID.String
 
-		txType, isTransfer := mapMoneyManagerTransactionType(doType.String, money.Float64)
+		txType, isTransfer := mapMoneyManagerTransactionType(doType.String, money.Float64, categoryID.String, categoryTypes, reversedSemantics)
 		t.Type = txType
 
 		if isTransfer {
@@ -168,19 +175,64 @@ func loadSQLiteColumnSet(db *sql.DB, tableName string) (map[string]struct{}, err
 	return columns, nil
 }
 
-func mapMoneyManagerTransactionType(rawType string, amount float64) (int, bool) {
+func detectReversedMoneyManagerSemantics(db *sql.DB) (bool, error) {
+	var doTypeZeroCount, doTypeOneCount int
+	if err := db.QueryRow(`
+		SELECT
+			COALESCE(SUM(CASE WHEN DO_TYPE = '0' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN DO_TYPE = '1' THEN 1 ELSE 0 END), 0)
+		FROM INOUTCOME
+	`).Scan(&doTypeZeroCount, &doTypeOneCount); err != nil {
+		return false, fmt.Errorf("failed to inspect INOUTCOME semantics: %w", err)
+	}
+
+	return doTypeOneCount > doTypeZeroCount, nil
+}
+
+func normalizeMoneyManagerCategoryType(rawType int, reversedSemantics bool) int {
+	if !reversedSemantics {
+		return rawType
+	}
+
 	switch rawType {
-	case "1":
-		return 1, false
+	case 0:
+		return 1
+	case 1:
+		return 0
+	default:
+		return rawType
+	}
+}
+
+func mapMoneyManagerTransactionType(rawType string, amount float64, categoryID string, categoryTypes map[string]int, reversedSemantics bool) (int, bool) {
+	switch rawType {
 	case "2", "3":
 		return 2, true
-	case "0":
+	}
+
+	if categoryType, ok := categoryTypes[categoryID]; ok {
+		if categoryType == 1 {
+			return 1, false
+		}
 		return 0, false
+	}
+
+	switch rawType {
+	case "0":
+		if reversedSemantics {
+			return 1, false
+		}
+		return 0, false
+	case "1":
+		if reversedSemantics {
+			return 0, false
+		}
+		return 1, false
 	default:
 		if amount < 0 {
 			return 0, false
 		}
-		return 0, false
+		return 1, false
 	}
 }
 

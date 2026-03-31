@@ -12,6 +12,8 @@ type TransactionRepository interface {
 	CreateTransfer(expense, income *models.Transaction) error
 	GetByID(id string) (*models.Transaction, error)
 	GetByIDForUser(userID, id string) (*models.Transaction, error)
+	ListAll() ([]models.Transaction, error)
+	ListAllForUser(userID string) ([]models.Transaction, error)
 	ListByDateRange(start, end time.Time) ([]models.Transaction, error)
 	ListByDateRangeForUser(userID string, start, end time.Time) ([]models.Transaction, error)
 	Delete(id string) error
@@ -86,6 +88,21 @@ func (r *sqliteTransactionRepository) GetByIDForUser(userID, id string) (*models
 	return r.getByQuery(query, normalizedUserID(userID), id)
 }
 
+func (r *sqliteTransactionRepository) ListAll() ([]models.Transaction, error) {
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
+		FROM transactions
+		ORDER BY date DESC`
+	return r.listByQuery(query)
+}
+
+func (r *sqliteTransactionRepository) ListAllForUser(userID string) ([]models.Transaction, error) {
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
+		FROM transactions
+		WHERE user_id = ?
+		ORDER BY date DESC`
+	return r.listByQuery(query, normalizedUserID(userID))
+}
+
 func (r *sqliteTransactionRepository) getByQuery(query string, args ...interface{}) (*models.Transaction, error) {
 	row := r.db.QueryRow(query, args...)
 	var tx models.Transaction
@@ -129,6 +146,10 @@ func (r *sqliteTransactionRepository) ListByDateRangeForUser(userID string, star
 }
 
 func (r *sqliteTransactionRepository) listByDateRangeQuery(query string, args ...interface{}) ([]models.Transaction, error) {
+	return r.listByQuery(query, args...)
+}
+
+func (r *sqliteTransactionRepository) listByQuery(query string, args ...interface{}) ([]models.Transaction, error) {
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err

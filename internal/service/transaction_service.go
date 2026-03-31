@@ -12,6 +12,7 @@ import (
 type TransactionService interface {
 	CreateTransfer(fromWalletID, toWalletID string, amount float64, date time.Time, notes string) (*models.Transaction, *models.Transaction, error)
 	CreateTransferForUser(userID, fromWalletID, toWalletID string, amount float64, date time.Time, notes string) (*models.Transaction, *models.Transaction, error)
+	ListForUser(userID string) ([]models.Transaction, error)
 }
 
 type transactionService struct {
@@ -96,4 +97,8 @@ func (s *transactionService) CreateTransferForUser(userID, fromWalletID, toWalle
 	}
 
 	return expense, income, nil
+}
+
+func (s *transactionService) ListForUser(userID string) ([]models.Transaction, error) {
+	return s.repo.ListAllForUser(userID)
 }

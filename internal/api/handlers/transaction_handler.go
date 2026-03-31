@@ -30,6 +30,28 @@ type CreateTransferResponse struct {
 	IncomeTransaction  *models.Transaction `json:"income_transaction"`
 }
 
+func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	transactions, err := h.service.ListForUser(user.ID)
+	if err != nil {
+		http.Error(w, "Failed to load transactions", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(transactions)
+}
+
 func (h *TransactionHandler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
