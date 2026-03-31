@@ -1,12 +1,17 @@
 package importer
 
 import (
+	"jarwise-backend/internal/db"
 	"jarwise-backend/internal/models"
 	"testing"
 )
 
 func TestImportData_IncompleteData(t *testing.T) {
-	imp := NewImporter()
+	dbConn, err := db.InitDB(":memory:")
+	if err != nil {
+		t.Fatalf("failed to initialize test database: %v", err)
+	}
+	imp := NewImporter(dbConn)
 
 	// 1. Setup: สร้างข้อมูลที่ "ไม่สมบูรณ์"
 	// มี 1 Transaction แต่อ้างถึง Account ID 'acc-missing' ที่ไม่มีอยู่ในรายชื่อ Accounts
@@ -25,7 +30,7 @@ func TestImportData_IncompleteData(t *testing.T) {
 
 	// 2. Action: รันการนำเข้าข้อมูล
 	// ในขั้นตอนนี้ เราคาดหวังว่าระบบจะ "ยกเลิก (Stop)" การนำเข้าทันที
-	err := imp.ImportData(incompleteData)
+	err = imp.ImportData(incompleteData)
 
 	// 3. Assert
 	if err == nil {

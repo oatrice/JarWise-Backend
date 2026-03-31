@@ -22,6 +22,10 @@ func (f *fakeChartRepo) ListByDateRange(start, end time.Time) ([]models.Transact
 	return results, nil
 }
 
+func (f *fakeChartRepo) ListByDateRangeForUser(_ string, start, end time.Time) ([]models.Transaction, error) {
+	return f.ListByDateRange(start, end)
+}
+
 func seedChartTransactions() []models.Transaction {
 	return []models.Transaction{
 		{

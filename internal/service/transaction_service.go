@@ -11,6 +11,8 @@ import (
 
 type TransactionService interface {
 	CreateTransfer(fromWalletID, toWalletID string, amount float64, date time.Time, notes string) (*models.Transaction, *models.Transaction, error)
+	CreateTransferForUser(userID, fromWalletID, toWalletID string, amount float64, date time.Time, notes string) (*models.Transaction, *models.Transaction, error)
+	ListForUser(userID string) ([]models.Transaction, error)
 }
 
 type transactionService struct {
@@ -26,8 +28,22 @@ func NewTransactionService(repo repository.TransactionRepository, walletRepo rep
 }
 
 func (s *transactionService) CreateTransfer(fromWalletID, toWalletID string, amount float64, date time.Time, notes string) (*models.Transaction, *models.Transaction, error) {
+	return s.CreateTransferForUser("", fromWalletID, toWalletID, amount, date, notes)
+}
+
+func (s *transactionService) CreateTransferForUser(userID, fromWalletID, toWalletID string, amount float64, date time.Time, notes string) (*models.Transaction, *models.Transaction, error) {
 	// 0. Verify Wallets exist (Handling Sync Conflicts)
-	fromWallet, err := s.walletRepo.Get(fromWalletID)
+	var (
+		fromWallet *models.Wallet
+		toWallet   *models.Wallet
+		err        error
+	)
+
+	if userID != "" {
+		fromWallet, err = s.walletRepo.GetForUser(userID, fromWalletID)
+	} else {
+		fromWallet, err = s.walletRepo.Get(fromWalletID)
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("service: failed to check source wallet: %w", err)
 	}
@@ -35,7 +51,11 @@ func (s *transactionService) CreateTransfer(fromWalletID, toWalletID string, amo
 		return nil, nil, fmt.Errorf("source wallet %s does not exist", fromWalletID)
 	}
 
-	toWallet, err := s.walletRepo.Get(toWalletID)
+	if userID != "" {
+		toWallet, err = s.walletRepo.GetForUser(userID, toWalletID)
+	} else {
+		toWallet, err = s.walletRepo.Get(toWalletID)
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("service: failed to check target wallet: %w", err)
 	}
@@ -50,6 +70,7 @@ func (s *transactionService) CreateTransfer(fromWalletID, toWalletID string, amo
 	// 2. Create Objects
 	expense := &models.Transaction{
 		ID:                   expenseID,
+		UserID:               userID,
 		Amount:               -amount, // Expense is negative
 		Type:                 "expense",
 		WalletID:             fromWalletID,
@@ -60,6 +81,7 @@ func (s *transactionService) CreateTransfer(fromWalletID, toWalletID string, amo
 
 	income := &models.Transaction{
 		ID:                   incomeID,
+		UserID:               userID,
 		Amount:               amount, // Income is positive
 		Type:                 "income",
 		WalletID:             toWalletID,
@@ -75,4 +97,8 @@ func (s *transactionService) CreateTransfer(fromWalletID, toWalletID string, amo
 	}
 
 	return expense, income, nil
+}
+
+func (s *transactionService) ListForUser(userID string) ([]models.Transaction, error) {
+	return s.repo.ListAllForUser(userID)
 }

@@ -6,6 +6,7 @@ import "time"
 
 type Wallet struct {
 	ID       string  `json:"id"`
+	UserID   string  `json:"user_id,omitempty"`
 	Name     string  `json:"name"`
 	Currency string  `json:"currency"`
 	Balance  float64 `json:"balance"`
@@ -14,6 +15,7 @@ type Wallet struct {
 
 type Jar struct { // Category
 	ID       string `json:"id"`
+	UserID   string `json:"user_id,omitempty"`
 	Name     string `json:"name"`
 	ParentID string `json:"parent_id,omitempty"`
 	WalletID string `json:"wallet_id,omitempty"`
@@ -23,6 +25,7 @@ type Jar struct { // Category
 }
 type Transaction struct {
 	ID          string    `json:"id"`
+	UserID      string    `json:"user_id,omitempty"`
 	Amount      float64   `json:"amount"`
 	Description string    `json:"description"`
 	Date        time.Time `json:"date"`

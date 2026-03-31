@@ -1,24 +1,32 @@
 package importer
 
 import (
+	"database/sql"
 	"fmt"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/validator"
+	"log"
 	"time"
 )
 
 type Importer struct {
+	db        *sql.DB
 	validator *validator.Validator
 }
 
-func NewImporter() *Importer {
+func NewImporter(db *sql.DB) *Importer {
 	return &Importer{
+		db:        db,
 		validator: validator.NewValidator(),
 	}
 }
 
 // ImportData converts MM data to JarWise domain models and persists them
 func (i *Importer) ImportData(data *models.ParsedData) error {
+	if i.db == nil {
+		return fmt.Errorf("importer database is not configured")
+	}
+
 	// Validate Integrity
 	validationErrors := i.validator.ValidateIntegrity(data)
 	if len(validationErrors) > 0 {
@@ -48,11 +56,61 @@ func (i *Importer) ImportData(data *models.ParsedData) error {
 
 	transactions := mapTransactions(validTxDTOs)
 
-	// Mock Persistence
-	fmt.Printf("--- Importing Data to JarWise DB ---\n")
-	fmt.Printf("Saved %d Wallets\n", len(wallets))
-	fmt.Printf("Saved %d Jars (Categories)\n", len(jars))
-	fmt.Printf("Saved %d Valid Transactions (Skipped %d invalid)\n", len(transactions), len(data.Transactions)-len(transactions))
+	tx, err := i.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start import transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, wallet := range wallets {
+		wallet.UserID = models.DefaultLocalUserID
+		if _, err := tx.Exec(
+			`INSERT INTO wallets (id, user_id, name, currency, balance, type) VALUES (?, ?, ?, ?, ?, ?)`,
+			wallet.ID, wallet.UserID, wallet.Name, wallet.Currency, wallet.Balance, wallet.Type,
+		); err != nil {
+			return fmt.Errorf("failed to insert wallet %s: %w", wallet.ID, err)
+		}
+	}
+
+	for _, jar := range jars {
+		jar.UserID = models.DefaultLocalUserID
+		if _, err := tx.Exec(
+			`INSERT INTO jars (id, user_id, name, type, parent_id, wallet_id, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			jar.ID, jar.UserID, jar.Name, jar.Type, nullableString(jar.ParentID), nullableString(jar.WalletID), jar.Icon, jar.Color,
+		); err != nil {
+			return fmt.Errorf("failed to insert jar %s: %w", jar.ID, err)
+		}
+	}
+
+	for _, transaction := range transactions {
+		transaction.UserID = models.DefaultLocalUserID
+		if _, err := tx.Exec(
+			`INSERT INTO transactions (id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			transaction.ID,
+			transaction.UserID,
+			transaction.Amount,
+			transaction.Description,
+			transaction.Date.UTC(),
+			transaction.Type,
+			transaction.WalletID,
+			nullableString(transaction.JarID),
+			nullableRelatedID(transaction.RelatedTransactionID),
+		); err != nil {
+			return fmt.Errorf("failed to insert transaction %s: %w", transaction.ID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit import transaction: %w", err)
+	}
+
+	log.Printf(
+		"[migration-import] committed wallets=%d jars=%d transactions=%d skipped_transactions=%d",
+		len(wallets),
+		len(jars),
+		len(transactions),
+		len(data.Transactions)-len(transactions),
+	)
 
 	if len(validationErrors) > 0 {
 		return fmt.Errorf("import completed with %d validation errors: %v", len(validationErrors), validationErrors)
@@ -60,6 +118,20 @@ func (i *Importer) ImportData(data *models.ParsedData) error {
 
 	return nil
 } // Mappers
+
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullableRelatedID(value *string) interface{} {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return *value
+}
 
 func mapWallets(mmAccounts []models.AccountDTO) []models.Wallet {
 	var result []models.Wallet

@@ -11,10 +11,17 @@ type TransactionRepository interface {
 	Create(tx *models.Transaction) error
 	CreateTransfer(expense, income *models.Transaction) error
 	GetByID(id string) (*models.Transaction, error)
+	GetByIDForUser(userID, id string) (*models.Transaction, error)
+	ListAll() ([]models.Transaction, error)
+	ListAllForUser(userID string) ([]models.Transaction, error)
 	ListByDateRange(start, end time.Time) ([]models.Transaction, error)
+	ListByDateRangeForUser(userID string, start, end time.Time) ([]models.Transaction, error)
 	Delete(id string) error
+	DeleteForUser(userID, id string) error
 	Unlink(id1, id2 string) error
+	UnlinkForUser(userID, id1, id2 string) error
 	GetExpenseGraphData(jarID, period string) ([]models.GraphDataPoint, error)
+	GetExpenseGraphDataForUser(userID, jarID, period string) ([]models.GraphDataPoint, error)
 }
 
 type sqliteTransactionRepository struct {
@@ -26,16 +33,19 @@ func NewSQLiteTransactionRepository(db *sql.DB) TransactionRepository {
 }
 
 func (r *sqliteTransactionRepository) Create(tx *models.Transaction) error {
+	tx.UserID = normalizedUserID(tx.UserID)
 	query := `INSERT INTO transactions 
-		(id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		(id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.Exec(query,
-		tx.ID, tx.Amount, tx.Description, tx.Date.UTC(), tx.Type,
+		tx.ID, tx.UserID, tx.Amount, tx.Description, tx.Date.UTC(), tx.Type,
 		tx.WalletID, tx.JarID, tx.RelatedTransactionID)
 	return err
 }
 
 func (r *sqliteTransactionRepository) CreateTransfer(expense, income *models.Transaction) error {
+	expense.UserID = normalizedUserID(expense.UserID)
+	income.UserID = normalizedUserID(income.UserID)
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -43,12 +53,12 @@ func (r *sqliteTransactionRepository) CreateTransfer(expense, income *models.Tra
 	defer tx.Rollback()
 
 	query := `INSERT INTO transactions 
-		(id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		(id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	// Insert Expense
 	_, err = tx.Exec(query,
-		expense.ID, expense.Amount, expense.Description, expense.Date.UTC(), expense.Type,
+		expense.ID, expense.UserID, expense.Amount, expense.Description, expense.Date.UTC(), expense.Type,
 		expense.WalletID, expense.JarID, expense.RelatedTransactionID)
 	if err != nil {
 		return fmt.Errorf("failed to insert expense: %w", err)
@@ -56,7 +66,7 @@ func (r *sqliteTransactionRepository) CreateTransfer(expense, income *models.Tra
 
 	// Insert Income
 	_, err = tx.Exec(query,
-		income.ID, income.Amount, income.Description, income.Date.UTC(), income.Type,
+		income.ID, income.UserID, income.Amount, income.Description, income.Date.UTC(), income.Type,
 		income.WalletID, income.JarID, income.RelatedTransactionID)
 	if err != nil {
 		return fmt.Errorf("failed to insert income: %w", err)
@@ -66,16 +76,40 @@ func (r *sqliteTransactionRepository) CreateTransfer(expense, income *models.Tra
 }
 
 func (r *sqliteTransactionRepository) GetByID(id string) (*models.Transaction, error) {
-	query := `SELECT id, amount, description, date, type, wallet_id, jar_id, related_transaction_id 
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id 
 		FROM transactions WHERE id = ?`
 
-	row := r.db.QueryRow(query, id)
+	return r.getByQuery(query, id)
+}
 
+func (r *sqliteTransactionRepository) GetByIDForUser(userID, id string) (*models.Transaction, error) {
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id 
+		FROM transactions WHERE user_id = ? AND id = ?`
+	return r.getByQuery(query, normalizedUserID(userID), id)
+}
+
+func (r *sqliteTransactionRepository) ListAll() ([]models.Transaction, error) {
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
+		FROM transactions
+		ORDER BY date DESC`
+	return r.listByQuery(query)
+}
+
+func (r *sqliteTransactionRepository) ListAllForUser(userID string) ([]models.Transaction, error) {
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
+		FROM transactions
+		WHERE user_id = ?
+		ORDER BY date DESC`
+	return r.listByQuery(query, normalizedUserID(userID))
+}
+
+func (r *sqliteTransactionRepository) getByQuery(query string, args ...interface{}) (*models.Transaction, error) {
+	row := r.db.QueryRow(query, args...)
 	var tx models.Transaction
 	var relatedID sql.NullString
 	var jarID sql.NullString
 
-	err := row.Scan(&tx.ID, &tx.Amount, &tx.Description, &tx.Date, &tx.Type,
+	err := row.Scan(&tx.ID, &tx.UserID, &tx.Amount, &tx.Description, &tx.Date, &tx.Type,
 		&tx.WalletID, &jarID, &relatedID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -95,12 +129,28 @@ func (r *sqliteTransactionRepository) GetByID(id string) (*models.Transaction, e
 }
 
 func (r *sqliteTransactionRepository) ListByDateRange(start, end time.Time) ([]models.Transaction, error) {
-	query := `SELECT id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
 		FROM transactions
 		WHERE date >= ? AND date <= ?
 		ORDER BY date DESC`
 
-	rows, err := r.db.Query(query, start.UTC(), end.UTC())
+	return r.listByDateRangeQuery(query, start.UTC(), end.UTC())
+}
+
+func (r *sqliteTransactionRepository) ListByDateRangeForUser(userID string, start, end time.Time) ([]models.Transaction, error) {
+	query := `SELECT id, user_id, amount, description, date, type, wallet_id, jar_id, related_transaction_id
+		FROM transactions
+		WHERE user_id = ? AND date >= ? AND date <= ?
+		ORDER BY date DESC`
+	return r.listByDateRangeQuery(query, normalizedUserID(userID), start.UTC(), end.UTC())
+}
+
+func (r *sqliteTransactionRepository) listByDateRangeQuery(query string, args ...interface{}) ([]models.Transaction, error) {
+	return r.listByQuery(query, args...)
+}
+
+func (r *sqliteTransactionRepository) listByQuery(query string, args ...interface{}) ([]models.Transaction, error) {
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +162,7 @@ func (r *sqliteTransactionRepository) ListByDateRange(start, end time.Time) ([]m
 		var relatedID sql.NullString
 		var jarID sql.NullString
 
-		if err := rows.Scan(&tx.ID, &tx.Amount, &tx.Description, &tx.Date, &tx.Type, &tx.WalletID, &jarID, &relatedID); err != nil {
+		if err := rows.Scan(&tx.ID, &tx.UserID, &tx.Amount, &tx.Description, &tx.Date, &tx.Type, &tx.WalletID, &jarID, &relatedID); err != nil {
 			return nil, err
 		}
 		if relatedID.Valid {
@@ -132,6 +182,21 @@ func (r *sqliteTransactionRepository) ListByDateRange(start, end time.Time) ([]m
 }
 
 func (r *sqliteTransactionRepository) Delete(id string) error {
+	return r.deleteByQuery("SELECT related_transaction_id FROM transactions WHERE id = ?", "DELETE FROM transactions WHERE id = ?", []interface{}{id}, []interface{}{id}, false)
+}
+
+func (r *sqliteTransactionRepository) DeleteForUser(userID, id string) error {
+	normalized := normalizedUserID(userID)
+	return r.deleteByQuery(
+		"SELECT related_transaction_id FROM transactions WHERE user_id = ? AND id = ?",
+		"DELETE FROM transactions WHERE user_id = ? AND id = ?",
+		[]interface{}{normalized, id},
+		[]interface{}{normalized, id},
+		true,
+	)
+}
+
+func (r *sqliteTransactionRepository) deleteByQuery(selectQuery, deleteQuery string, selectArgs, deleteArgs []interface{}, scoped bool) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -140,7 +205,7 @@ func (r *sqliteTransactionRepository) Delete(id string) error {
 
 	// 1. Check for link
 	var relatedID sql.NullString
-	err = tx.QueryRow("SELECT related_transaction_id FROM transactions WHERE id = ?", id).Scan(&relatedID)
+	err = tx.QueryRow(selectQuery, selectArgs...).Scan(&relatedID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil // Already deleted?
@@ -150,14 +215,18 @@ func (r *sqliteTransactionRepository) Delete(id string) error {
 
 	// 2. Unlink pair if exists
 	if relatedID.Valid {
-		_, err = tx.Exec("UPDATE transactions SET related_transaction_id = NULL WHERE id = ?", relatedID.String)
+		if scoped {
+			_, err = tx.Exec("UPDATE transactions SET related_transaction_id = NULL WHERE user_id = ? AND id = ?", selectArgs[0], relatedID.String)
+		} else {
+			_, err = tx.Exec("UPDATE transactions SET related_transaction_id = NULL WHERE id = ?", relatedID.String)
+		}
 		if err != nil {
 			return err
 		}
 	}
 
 	// 3. Delete
-	_, err = tx.Exec("DELETE FROM transactions WHERE id = ?", id)
+	_, err = tx.Exec(deleteQuery, deleteArgs...)
 	if err != nil {
 		return err
 	}
@@ -166,18 +235,29 @@ func (r *sqliteTransactionRepository) Delete(id string) error {
 }
 
 func (r *sqliteTransactionRepository) Unlink(id1, id2 string) error {
+	return r.unlinkByQuery("UPDATE transactions SET related_transaction_id = NULL WHERE id = ?", []interface{}{id1}, []interface{}{id2})
+}
+
+func (r *sqliteTransactionRepository) UnlinkForUser(userID, id1, id2 string) error {
+	normalized := normalizedUserID(userID)
+	return r.unlinkByQuery(
+		"UPDATE transactions SET related_transaction_id = NULL WHERE user_id = ? AND id = ?",
+		[]interface{}{normalized, id1},
+		[]interface{}{normalized, id2},
+	)
+}
+
+func (r *sqliteTransactionRepository) unlinkByQuery(query string, args1, args2 []interface{}) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	query := "UPDATE transactions SET related_transaction_id = NULL WHERE id = ?"
-
-	if _, err := tx.Exec(query, id1); err != nil {
+	if _, err := tx.Exec(query, args1...); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(query, id2); err != nil {
+	if _, err := tx.Exec(query, args2...); err != nil {
 		return err
 	}
 
@@ -185,6 +265,14 @@ func (r *sqliteTransactionRepository) Unlink(id1, id2 string) error {
 }
 
 func (r *sqliteTransactionRepository) GetExpenseGraphData(jarID, period string) ([]models.GraphDataPoint, error) {
+	return r.getExpenseGraphDataQuery("", jarID, period)
+}
+
+func (r *sqliteTransactionRepository) GetExpenseGraphDataForUser(userID, jarID, period string) ([]models.GraphDataPoint, error) {
+	return r.getExpenseGraphDataQuery(normalizedUserID(userID), jarID, period)
+}
+
+func (r *sqliteTransactionRepository) getExpenseGraphDataQuery(userID, jarID, period string) ([]models.GraphDataPoint, error) {
 	var dateFormat string
 	switch period {
 	case "weekly":
@@ -205,11 +293,18 @@ func (r *sqliteTransactionRepository) GetExpenseGraphData(jarID, period string) 
 		WHERE 
 			jar_id = ? 
 			AND type = 'expense'
+	`
+	args := []interface{}{jarID}
+	if userID != "" {
+		query += ` AND user_id = ?`
+		args = append(args, userID)
+	}
+	query += `
 		GROUP BY period_label
 		ORDER BY period_label ASC
 	`
 
-	rows, err := r.db.Query(query, jarID)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

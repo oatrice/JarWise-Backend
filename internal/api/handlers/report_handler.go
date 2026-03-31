@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"jarwise-backend/internal/auth"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/service"
 	"log"
@@ -31,7 +32,13 @@ func (h *ReportHandler) GetReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	report, err := h.service.GenerateReport(r.Context(), filter)
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	report, err := h.service.GenerateReportForUser(r.Context(), user.ID, filter)
 	if err != nil {
 		http.Error(w, "Failed to generate report", http.StatusInternalServerError)
 		return
@@ -53,14 +60,20 @@ func (h *ReportHandler) ExportReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	csvData, err := h.service.ExportTransactionsToCSV(r.Context(), filter)
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	csvData, err := h.service.ExportTransactionsToCSVForUser(r.Context(), user.ID, filter)
 	if err != nil {
 		log.Printf("Export error: %v", err)
 		http.Error(w, "Failed to export report: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Exporting CSV: %d bytes (Filter: %v - %v)", len(csvData), filter.StartDate, filter.EndDate)
+	log.Printf("Exporting CSV for user=%s: %d bytes (Filter: %v - %v)", user.ID, len(csvData), filter.StartDate, filter.EndDate)
 
 	filename := "jarwise-report-" + time.Now().Format("2006-01-02-150405") + ".csv"
 	w.Header().Set("Content-Type", "text/csv")

@@ -8,6 +8,12 @@ import (
 
 type Validator struct{}
 
+var acceptedSystemCategoryIDs = map[string]struct{}{
+	"":   {},
+	"0":  {},
+	"-4": {},
+}
+
 func NewValidator() *Validator {
 	return &Validator{}
 }
@@ -30,11 +36,11 @@ func (v *Validator) ValidateIntegrity(data *models.ParsedData) []string {
 		if !walletIDs[tx.AccountID] {
 			errors = append(errors, fmt.Sprintf("Tx %s (%.2f) references unknown Account %s", tx.ID, tx.Amount, tx.AccountID))
 		}
-		if tx.CategoryID != "" && !jarIDs[tx.CategoryID] {
+		if tx.Type != 2 && !isAcceptedCategoryReference(tx.CategoryID, jarIDs) {
 			errors = append(errors, fmt.Sprintf("Tx %s (%.2f) references unknown Category %s", tx.ID, tx.Amount, tx.CategoryID))
 		}
 		// Check transfer target
-		if tx.ToAccountID != "" && !walletIDs[tx.ToAccountID] {
+		if tx.Type == 2 && tx.ToAccountID != "" && !walletIDs[tx.ToAccountID] {
 			errors = append(errors, fmt.Sprintf("Transfer %s (%.2f) references unknown ToAccount %s", tx.ID, tx.Amount, tx.ToAccountID))
 		}
 	}
@@ -100,4 +106,11 @@ func calculateStats(data *models.ParsedData) models.MigrationStats {
 		TotalIncome:  data.TotalIncome,
 		TotalExpense: data.TotalExpense,
 	}
+}
+
+func isAcceptedCategoryReference(categoryID string, knownCategories map[string]bool) bool {
+	if _, ok := acceptedSystemCategoryIDs[categoryID]; ok {
+		return true
+	}
+	return knownCategories[categoryID]
 }

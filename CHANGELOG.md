@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0] - 2026-03-31
+
+### Added
+- **API**: Implemented new endpoints for listing jars, transactions, and wallets.
+- **Authentication**: Introduced Google authentication and user management capabilities.
+- **Migration**: Added data persistence for migration processes.
+
+### Fixed
+- **Authentication**: Improved Google authentication error handling.
+- **Parser**: Enhanced transaction parsing and validation logic for better accuracy.
+
 ## [0.5.0] - 2026-03-28
 
 ### Added

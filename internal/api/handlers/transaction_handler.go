@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"jarwise-backend/internal/auth"
 	"jarwise-backend/internal/models"
 	"jarwise-backend/internal/service"
 	"net/http"
@@ -27,6 +28,28 @@ type CreateTransferRequest struct {
 type CreateTransferResponse struct {
 	ExpenseTransaction *models.Transaction `json:"expense_transaction"`
 	IncomeTransaction  *models.Transaction `json:"income_transaction"`
+}
+
+func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	transactions, err := h.service.ListForUser(user.ID)
+	if err != nil {
+		http.Error(w, "Failed to load transactions", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(transactions)
 }
 
 func (h *TransactionHandler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +80,13 @@ func (h *TransactionHandler) CreateTransfer(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	expense, income, err := h.service.CreateTransfer(req.FromWalletID, req.ToWalletID, req.Amount, date, req.Notes)
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	expense, income, err := h.service.CreateTransferForUser(user.ID, req.FromWalletID, req.ToWalletID, req.Amount, date, req.Notes)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
